@@ -413,7 +413,7 @@ const adminPrimaryItems = computed(() =>
         ),
         "Messages",
       ]
-    : ["Profile setup", "Messages"]
+    : ["Profile setup", "Chat"]
 );
 const adminManageItems = computed(() =>
   [
