@@ -1,0 +1,4 @@
+# Merge this setting into the existing [supervisord] section in supervisord.conf.
+# Do not add a second [supervisord] section if one already exists.
+[supervisord]
+minfds=10000

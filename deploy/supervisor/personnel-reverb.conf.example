@@ -1,0 +1,14 @@
+[program:personnel-reverb]
+process_name=%(program_name)s
+user=www-data
+directory=/var/www/personnel-information-system
+command=/usr/bin/php artisan reverb:start --host=127.0.0.1 --port=8080
+autostart=true
+autorestart=true
+stopasgroup=true
+killasgroup=true
+stopwaitsecs=10
+redirect_stderr=true
+stdout_logfile=/var/www/personnel-information-system/storage/logs/reverb.log
+stdout_logfile_maxbytes=20MB
+stdout_logfile_backups=5

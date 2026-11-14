@@ -1,0 +1,48 @@
+0 verbose cli /home/peterbif/.nvm/versions/node/v24.21.0/bin/node /home/peterbif/.nvm/versions/node/v24.21.0/bin/npm
+1 info using npm@11.19.0
+2 info using node@v24.21.0
+3 silly config load:file:/home/peterbif/.nvm/versions/node/v24.21.0/lib/node_modules/npm/npmrc
+4 silly config load:file:/var/www/html/pis/.npmrc
+5 silly config load:file:/home/peterbif/.npmrc
+6 silly config load:file:/home/peterbif/.nvm/versions/node/v24.21.0/etc/npmrc
+7 verbose title npm install lucide-vue-next
+8 verbose argv "install" "lucide-vue-next" "--cache" "./work/npm-cache"
+9 verbose logfile logs-max:10 dir:/var/www/html/pis/work/npm-cache/_logs/2026-11-12T18_16_53_954Z-
+10 verbose logfile /var/www/html/pis/work/npm-cache/_logs/2026-11-12T18_16_53_954Z-debug-0.log
+11 silly logfile done cleaning log files
+12 silly packumentCache heap:4496293888 maxSize:1124073472 maxEntrySize:562036736
+13 verbose shrinkwrap failed to load node_modules/.package-lock.json out of date, updated: node_modules
+14 silly idealTree buildDeps
+15 silly fetch manifest lucide-vue-next@*
+16 silly packumentCache full:https://registry.npmjs.org/lucide-vue-next cache-miss
+17 http fetch GET https://registry.npmjs.org/npm attempt 1 failed with ETIMEDOUT
+18 http fetch GET https://registry.npmjs.org/lucide-vue-next attempt 1 failed with ETIMEDOUT
+19 http fetch GET https://registry.npmjs.org/npm attempt 2 failed with ETIMEDOUT
+20 http fetch GET https://registry.npmjs.org/lucide-vue-next attempt 2 failed with ETIMEDOUT
+21 http fetch GET https://registry.npmjs.org/npm attempt 3 failed with ETIMEDOUT
+22 http fetch GET https://registry.npmjs.org/lucide-vue-next attempt 3 failed with ETIMEDOUT
+23 silly placeDep ROOT lucide-vue-next@ OK for: people-first-personnel@1.0.0 want: *
+24 verbose type system
+25 verbose stack FetchError: request to https://registry.npmjs.org/lucide-vue-next failed, reason: 
+25 verbose stack     at ClientRequest.<anonymous> (/home/peterbif/.nvm/versions/node/v24.21.0/lib/node_modules/npm/node_modules/minipass-fetch/lib/index.js:130:14)
+25 verbose stack     at ClientRequest.emit (node:events:514:28)
+25 verbose stack     at emitErrorEvent (node:_http_client:114:11)
+25 verbose stack     at _destroy (node:_http_client:1167:9)
+25 verbose stack     at onSocketNT (node:_http_client:1188:5)
+25 verbose stack     at process.processTicksAndRejections (node:internal/process/task_queues:91:21)
+26 error code ETIMEDOUT
+27 error errno ETIMEDOUT
+28 error network request to https://registry.npmjs.org/lucide-vue-next failed, reason: 
+29 error network This is a problem related to network connectivity.
+29 error network In most cases you are behind a proxy or have bad network settings.
+29 error network
+29 error network If you are behind a proxy, please make sure that the 'proxy' config is set properly.  See: 'npm help config'
+30 silly unfinished npm timer reify 1794507414082
+31 silly unfinished npm timer reify:loadTrees 1794507414082
+32 verbose cwd /var/www/html/pis
+33 verbose os Linux 6.8.0-147-generic
+34 verbose node v24.21.0
+35 verbose npm  v11.19.0
+36 verbose exit 1
+37 verbose code 1
+38 error A complete log of this run can be found in: /var/www/html/pis/work/npm-cache/_logs/2026-11-12T18_16_53_954Z-debug-0.log
