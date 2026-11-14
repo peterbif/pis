@@ -1393,10 +1393,9 @@ async function signOut() {
         <div class="story-orbit orbit-two"></div>
         <div class="story-content">
     
-          <h1>PERSONNEL INFORMATION SYSTEM.<br /><em>Your record does too.</em></h1>
+          <h1>PERSONNEL INFORMATION SYSTEM</h1>
           <p>
-            A thoughtful place to keep your service record, milestones and the
-            details that help us care for the people who care for others.
+            Your work matters to us as well as your records.
           </p>
           <div class="story-points">
             <div>
@@ -1539,7 +1538,7 @@ async function signOut() {
                   signupError = '';
                 "
               >
-                Create your account
+               <span class="text-lg-body-1"> Create your account</span>
                 <v-icon icon="mdi-arrow-up-right" size="15" />
               </button></div></template
           ><template v-else
