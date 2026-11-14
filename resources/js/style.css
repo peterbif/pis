@@ -5597,6 +5597,7 @@ body {
     }
 
     .auth-frame {
+        grid-template-columns: minmax(0, 1fr);
         max-width: 680px;
         overflow: hidden;
         border-radius: 22px;
@@ -5604,6 +5605,9 @@ body {
     }
 
     .auth-main {
+        width: 100%;
+        min-width: 0;
+        box-sizing: border-box;
         padding: 24px 34px 30px;
         background: linear-gradient(160deg, #f5faf6, #fff 45%)
     }
@@ -5651,6 +5655,8 @@ body {
     }
 
     .auth-frame {
+        grid-template-columns: minmax(0, 1fr);
+        width: 100%;
         min-height: 100vh;
         border: 0;
         border-radius: 0;
@@ -5659,6 +5665,8 @@ body {
     }
 
     .auth-main {
+        width: 100%;
+        min-width: 0;
         padding: 0 19px 23px;
         background: #f5f8f5
     }
