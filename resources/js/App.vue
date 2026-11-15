@@ -843,6 +843,7 @@ async function loadOwnProfile() {
         }))
       : [{ sitting: "1st", subjects: [{}] }];
     profileDocuments.value = documents || [];
+    await loadPassportPhoto();
   } catch {
     notify("Could not load your personnel profile.");
   }
@@ -878,6 +879,7 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   if (chatRefreshTimer) window.clearInterval(chatRefreshTimer);
   if (activeChatChannel && window.Echo) window.Echo.leave(activeChatChannel);
+  if (passportPrintUrl.value) URL.revokeObjectURL(passportPrintUrl.value);
   window.removeEventListener("pis-reverb-connected", onChatSocketConnected);
   window.removeEventListener("pis-reverb-connecting", onChatSocketConnecting);
   window.removeEventListener(
@@ -977,11 +979,34 @@ async function uploadProfileDocument(event, category, index = null) {
   try {
     const { document } = await store.uploadDocument(category, file, index);
     profileDocuments.value.unshift(document);
+    if (category === "passport") await loadPassportPhoto();
     notify("Your document has been stored securely.");
   } catch (e) {
     notify(humanError(e, "We could not upload that document."));
   } finally {
     event.target.value = "";
+  }
+}
+async function loadPassportPhoto() {
+  const passport = profileDocuments.value.find(
+    (document) => document.category === "passport"
+  );
+  if (!passport) {
+    if (passportPrintUrl.value) URL.revokeObjectURL(passportPrintUrl.value);
+    passportPrintUrl.value = "";
+    return false;
+  }
+  try {
+    const response = await axios.get(
+      `/api/personnel/documents/${passport.id}`,
+      { responseType: "blob" }
+    );
+    const previousUrl = passportPrintUrl.value;
+    passportPrintUrl.value = URL.createObjectURL(response.data);
+    if (previousUrl) URL.revokeObjectURL(previousUrl);
+    return true;
+  } catch {
+    return false;
   }
 }
 async function downloadDocument(fileRecord) {
@@ -1023,24 +1048,15 @@ async function printPersonnelProfile() {
     const result = await store.saveProfile({ data });
     profileStatus.value = result.profile.status;
     profileData.value = result.profile.data || data;
-    const passport = profileDocuments.value.find(
+    const hasPassport = profileDocuments.value.some(
       (document) => document.category === "passport"
     );
-    if (passport) {
-      try {
-        const response = await axios.get(
-          `/api/personnel/documents/${passport.id}`,
-          { responseType: "blob" }
-        );
-        if (passportPrintUrl.value) URL.revokeObjectURL(passportPrintUrl.value);
-        passportPrintUrl.value = URL.createObjectURL(response.data);
-      } catch {
-        notify(
-          "Your profile will print, but the saved passport photograph could not be loaded.",
-          "warning"
-        );
-      }
-    } else passportPrintUrl.value = "";
+    const passportLoaded = await loadPassportPhoto();
+    if (hasPassport && !passportLoaded)
+      notify(
+        "Your profile will print, but the saved passport photograph could not be loaded.",
+        "warning"
+      );
     await nextTick();
     window.print();
   } catch (e) {
@@ -1864,14 +1880,20 @@ async function signOut() {
         </div>
         <div class="user-row">
           <div class="user-avatar">
-            {{
+            <img
+              v-if="passportPrintUrl"
+              class="account-avatar-photo"
+              :src="passportPrintUrl"
+              alt="Personnel passport photograph"
+            />
+            <template v-else>{{
               (store.user?.name || "UC")
                 .split(" ")
                 .map((part) => part[0])
                 .join("")
                 .slice(0, 2)
                 .toUpperCase()
-            }}
+            }}</template>
           </div>
           <div class="user-copy">
             <b>{{ store.user?.name || "UCH colleague" }}</b
@@ -1894,10 +1916,30 @@ async function signOut() {
           ><v-icon icon="mdi-chevron-right" size="15" /><b>{{ nav }}</b>
         </div>
         <div class="top-actions">
-          <!-- <button class="admin-signin-link text-danger" @click="signOut"> <i class="mdi mdi-logout"></i> Sign Out</button>
- -->
-
- <button class="admin-signin-link text-danger" @click="signOut"><svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5M21 12H9"/></svg> Sign Out</button>
+          <button class="admin-signin-link" @click="signOut">
+            <svg
+              class="signout-icon"
+              viewBox="0 0 24 24"
+              fill="none"
+              aria-hidden="true"
+            >
+              <path
+                d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+              <path
+                d="m16 17 5-5-5-5M21 12H9"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+            <span>Sign out</span>
+          </button>
           <div class="secure-pill">
             <v-icon icon="mdi-shield-check-outline" size="16" /> Secure
             workspace
@@ -1906,14 +1948,20 @@ async function signOut() {
             <v-icon icon="mdi-bell-outline" /><i></i>
           </button>
           <div class="tiny-avatar">
-            {{
+            <img
+              v-if="passportPrintUrl"
+              class="account-avatar-photo"
+              :src="passportPrintUrl"
+              alt="Personnel passport photograph"
+            />
+            <template v-else>{{
               (store.user?.name || "UC")
                 .split(" ")
                 .map((part) => part[0])
                 .join("")
                 .slice(0, 2)
                 .toUpperCase()
-            }}
+            }}</template>
           </div>
         </div>
       </header>
@@ -2237,14 +2285,21 @@ async function signOut() {
           <div class="profile-side">
             <div class="profile-person">
               <div class="profile-photo">
-                {{
-                  (store.user?.name || "UC")
-                    .split(" ")
-                    .map((part) => part[0])
-                    .join("")
-                    .slice(0, 2)
-                    .toUpperCase()
-                }}<span><v-icon icon="mdi-camera" size="16" /></span>
+                <img
+                  v-if="passportPrintUrl"
+                  class="profile-photo-image"
+                  :src="passportPrintUrl"
+                  alt="Your passport photograph"
+                />
+                <template v-else>{{
+                    (store.user?.name || "UC")
+                      .split(" ")
+                      .map((part) => part[0])
+                      .join("")
+                      .slice(0, 2)
+                      .toUpperCase()
+                  }}</template
+                ><span><v-icon icon="mdi-camera" size="16" /></span>
               </div>
               <b>{{ store.user?.name || store.user?.email }}</b
               ><small>UCH personnel account</small>
@@ -2831,6 +2886,15 @@ async function signOut() {
                 <b>{{ profileData["IPPIS number"] || "—" }}</b></span
               >
             </div>
+            <img
+              v-if="passportPrintUrl"
+              class="print-passport-photo"
+              :src="passportPrintUrl"
+              alt="Personnel passport photograph"
+            />
+            <div v-else class="print-passport-placeholder">
+              PASSPORT<br />PHOTO
+            </div>
           </div>
           <section
             v-for="group in printableSections"
@@ -2852,20 +2916,23 @@ async function signOut() {
               </div>
             </div>
           </section>
-          <section v-if="profileDocuments.length" class="print-attachments">
+          <section
+            v-if="profileDocuments.some((doc) => doc.category !== 'passport')"
+            class="print-attachments"
+          >
             <h3>Secure attachments</h3>
             <p>
-              Documents are stored securely in the Personnel Information System
-              and are not embedded in this printout.
+              Supporting documents remain securely stored and are not embedded
+              in this printout.
             </p>
             <ul>
-              <li v-for="doc in profileDocuments" :key="doc.id">
-                {{
-                  doc.category === "passport"
-                    ? "Passport photograph"
-                    : "Education certificate"
-                }}
-                · {{ doc.original_name }}
+              <li
+                v-for="doc in profileDocuments.filter(
+                  (item) => item.category !== 'passport'
+                )"
+                :key="doc.id"
+              >
+                Education certificate · {{ doc.original_name }}
               </li>
             </ul>
           </section>
@@ -3584,9 +3651,9 @@ async function signOut() {
                 v-model="newAdmin.password"
                 required
                 type="password"
-                minlength="8"
+                minlength="14"
                 autocomplete="new-password"
-                placeholder="At least 8 characters, with upper/lowercase, number and symbol" /></label
+                placeholder="At least 14 characters, with upper/lowercase, number and symbol" /></label
             ><label
               >CONFIRM PASSWORD<input
                 v-model="newAdmin.password_confirmation"
