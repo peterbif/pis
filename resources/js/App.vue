@@ -1894,7 +1894,7 @@ async function signOut() {
           ><v-icon icon="mdi-chevron-right" size="15" /><b>{{ nav }}</b>
         </div>
         <div class="top-actions">
-          <button class="admin-signin-link text-danger" @click="signOut"> <i class="mdi-logout"></i> Sign out</button>
+          <button class="admin-signin-link text-danger" @click="signOut"> <i class="mdi mdi-logout"></i> Sign out</button>
           <div class="secure-pill">
             <v-icon icon="mdi-shield-check-outline" size="16" /> Secure
             workspace
