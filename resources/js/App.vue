@@ -571,6 +571,12 @@ function dependentStateField(field) {
     ? "State of origin"
     : "";
 }
+function profileDropdownPlaceholder(field) {
+  const parentField = dependentStateField(field);
+  return parentField && !profileData.value[parentField]
+    ? "Choose a state first"
+    : "Select an option";
+}
 function getOptions(field) {
   const parentField = dependentStateField(field);
   if (parentField)
@@ -2676,59 +2682,39 @@ async function signOut() {
                 }"
               >
                 <label>{{ f }} <i v-if="j < 2">*</i></label
-                ><select
-                  v-if="lookupKey(f)"
-                  :value="profileData[f] || ''"
-                  :disabled="
-                    !!dependentStateField(f) &&
-                    !profileData[dependentStateField(f)]
-                  "
-                  @change="setProfileDropdown(f, $event.target.value)"
                 >
-                  <option value="" disabled>
-                    {{
-                      dependentStateField(f) &&
+                <template v-if="lookupKey(f)">
+                  <select
+                    :value="profileData[f] || ''"
+                    :disabled="
+                      !!dependentStateField(f) &&
                       !profileData[dependentStateField(f)]
-                        ? "Choose a state first"
-                        : "Select an option"
-                    }}
-                  </option>
-                  <option
-                    v-for="choice in getOptions(f)"
-                    :key="choice"
-                    :value="choice"
+                    "
+                    @change="setProfileDropdown(f, $event.target.value)"
                   >
-                    {{ choice }}
-                  </option></select
-                ><button
-                  v-if="lookupKey(f)"
-                  type="button"
-                  class="add-personnel-option"
-                  :disabled="
-                    !!dependentStateField(f) &&
-                    !profileData[dependentStateField(f)]
-                  "
-                  @click="startAddDropdown(f)"
-                >
-                  Can’t find an option? Add it
-                </button>
-                <div
-                  v-if="lookupKey(f) && addingDropdownField === f"
-                  class="inline-option-add"
-                >
-                  <input
-                    v-model="newDropdownOption"
-                    maxlength="120"
-                    placeholder="Type the option you need"
-                    @keyup.enter="savePersonnelDropdownOption(f)"
-                  /><button
+                    <option value="" disabled>
+                      {{ profileDropdownPlaceholder(f) }}
+                    </option>
+                    <option
+                      v-for="choice in getOptions(f)"
+                      :key="choice"
+                      :value="choice"
+                    >
+                      {{ choice }}
+                    </option>
+                  </select>
+                  <button
                     type="button"
-                    :disabled="dropdownOptionBusy || !newDropdownOption.trim()"
-                    @click="savePersonnelDropdownOption(f)"
+                    class="add-personnel-option"
+                    :disabled="
+                      !!dependentStateField(f) &&
+                      !profileData[dependentStateField(f)]
+                    "
+                    @click="startAddDropdown(f)"
                   >
-                    {{ dropdownOptionBusy ? "Adding…" : "Add & select" }}
+                    Can’t find an option? Add it
                   </button>
-                </div>
+                </template>
                 <label
                   v-else-if="
                     f.includes('upload') || f.toLowerCase().includes('passport')
@@ -2759,7 +2745,6 @@ async function signOut() {
                   :placeholder="`Enter ${f.toLowerCase()}`"
                 ></textarea
                 ><input
-                  v-else
                   v-else-if="!lookupKey(f)"
                   :value="profileData[f]"
                   @input="profileData[f] = $event.target.value"
