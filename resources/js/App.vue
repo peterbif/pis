@@ -1894,7 +1894,7 @@ async function signOut() {
           ><v-icon icon="mdi-chevron-right" size="15" /><b>{{ nav }}</b>
         </div>
         <div class="top-actions">
-          <button class="admin-signin-link" @click="signOut">Sign out</button>
+          <button class="admin-signin-link text-danger" @click="signOut">Sign out</button>
           <div class="secure-pill">
             <v-icon icon="mdi-shield-check-outline" size="16" /> Secure
             workspace
@@ -3581,9 +3581,9 @@ async function signOut() {
                 v-model="newAdmin.password"
                 required
                 type="password"
-                minlength="14"
+                minlength="8"
                 autocomplete="new-password"
-                placeholder="At least 14 characters, with upper/lowercase, number and symbol" /></label
+                placeholder="At least 8 characters, with upper/lowercase, number and symbol" /></label
             ><label
               >CONFIRM PASSWORD<input
                 v-model="newAdmin.password_confirmation"

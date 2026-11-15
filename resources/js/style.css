@@ -2537,7 +2537,7 @@ tbody tr:hover {
 .admin-signin-link {
     border: 0;
     background: transparent;
-    color: #526f5e;
+    color: #e20b0b !important;
     font: 700 13px 'DM Sans';
     cursor: pointer;
 }
