@@ -413,7 +413,7 @@ const adminPrimaryItems = computed(() =>
         ),
         "Messages",
       ]
-    : ["Profile setup", "Chat"]
+    : ["Profile setup", "Messages"]
 );
 const adminManageItems = computed(() =>
   [
@@ -2688,6 +2688,11 @@ async function signOut() {
                   <option value="" disabled>
                     {{
                       dependentStateField(f) &&
+                <template v-if="lookupKey(f)">
+                  <select
+                    :value="profileData[f] || ''"
+                    :disabled="
+                      !!dependentStateField(f) &&
                       !profileData[dependentStateField(f)]
                         ? "Choose a state first"
                         : "Select an option"
@@ -2697,6 +2702,8 @@ async function signOut() {
                     v-for="choice in getOptions(f)"
                     :key="choice"
                     :value="choice"
+                    "
+                    @change="setProfileDropdown(f, $event.target.value)"
                   >
                     {{ choice }}
                   </option></select
@@ -2722,13 +2729,38 @@ async function signOut() {
                     placeholder="Type the option you need"
                     @keyup.enter="savePersonnelDropdownOption(f)"
                   /><button
+                    <option value="" disabled>
+                      {{
+                        dependentStateField(f) &&
+                        !profileData[dependentStateField(f)]
+                          ? "Choose a state first"
+                          : "Select an option"
+                      }}
+                    </option>
+                    <option
+                      v-for="choice in getOptions(f)"
+                      :key="choice"
+                      :value="choice"
+                    >
+                      {{ choice }}
+                    </option>
+                  </select>
+                  <button
                     type="button"
                     :disabled="dropdownOptionBusy || !newDropdownOption.trim()"
                     @click="savePersonnelDropdownOption(f)"
+                    class="add-personnel-option"
+                    :disabled="
+                      !!dependentStateField(f) &&
+                      !profileData[dependentStateField(f)]
+                    "
+                    @click="startAddDropdown(f)"
                   >
                     {{ dropdownOptionBusy ? "Adding…" : "Add & select" }}
+                    Can’t find an option? Add it
                   </button>
                 </div>
+                </template>
                 <label
                   v-else-if="
                     f.includes('upload') || f.toLowerCase().includes('passport')
@@ -2760,6 +2792,7 @@ async function signOut() {
                 ></textarea
                 ><input
                   v-else
+                  v-else-if="!lookupKey(f)"
                   :value="profileData[f]"
                   @input="profileData[f] = $event.target.value"
                   :type="
@@ -3358,7 +3391,15 @@ async function signOut() {
             /></a>
           </section>
         </div>
-        <div v-else-if="nav === 'Messages'" class="chat-workspace">
+        <div
+          v-else-if="nav === 'Messages'"
+          class="chat-workspace"
+          :class="{
+            'personnel-chat-workspace': !['admin', 'superadmin'].includes(
+              store.user?.role
+            ),
+          }"
+        >
           <aside
             v-if="['admin', 'superadmin'].includes(store.user?.role)"
             class="chat-inbox"
@@ -3409,32 +3450,33 @@ async function signOut() {
           </aside>
           <aside v-else class="chat-inbox personnel-chat-inbox">
             <div class="chat-inbox-heading">
-              <span class="form-kicker">UCH PERSONNEL INFORMATION SYSTEM</span>
-              <h2>Your messages</h2>
-              <p>A private line to the People team.</p>
+              <span class="form-kicker">UCH PERSONNEL SERVICES</span>
+              <h2>Your support inbox</h2>
+              <p>A direct, private line to your People team.</p>
             </div>
             <div class="chat-contact-list">
-              <div
+              <button
+                type="button"
                 class="chat-contact selected personnel-service-contact"
                 aria-current="page"
               >
-                <span class="chat-avatar">PIS</span
+                <span class="chat-avatar personnel-service-avatar">
+                  <v-icon icon="mdi-headset" size="21" />
+                </span
                 ><span class="chat-contact-copy"
-                  ><b>Personnel Information System</b
-                  ><small>HR enquiries and staff support</small></span
+                  ><b>Personnel Services</b
+                  ><small>People team · UCH Ibadan</small></span
                 ><span class="chat-active-dot" aria-label="Available"></span>
-              </div>
+              </button>
             </div>
             <div class="personnel-chat-note">
-              <span class="chat-start-icon"
-                ><v-icon icon="mdi-shield-lock-outline" size="18"
-              /></span>
-              <div>
-                <b>Private conversation</b>
-                <p>
-                  Your messages are visible to you and authorised Personnel
-                  Services administrators.
-                </p>
+              <span class="personnel-note-icon">
+                <v-icon icon="mdi-shield-lock-outline" size="19" />
+              </span>
+              <div class="personnel-note-copy">
+                <span class="personnel-note-kicker">PRIVATE CHANNEL</span>
+                <b>Your conversation stays confidential</b>
+                <p>Only you and authorised Personnel Services administrators can read these messages.</p>
               </div>
             </div>
           </aside>

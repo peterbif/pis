@@ -1,7 +1,8 @@
 <?php
+
 namespace App\Http\Controllers;
 
-use App\Models\{ApprovedEmail,Lookup,PersonnelProfile,User};
+use App\Models\{ApprovedEmail, Lookup, PersonnelProfile, User};
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
@@ -14,8 +15,12 @@ use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 class AdminController
 {
     private const ADMIN_PERMISSIONS = [
-        'view_dashboard', 'view_personnel', 'review_personnel', 'export_personnel',
-        'manage_invitations', 'manage_lookups',
+        'view_dashboard',
+        'view_personnel',
+        'review_personnel',
+        'export_personnel',
+        'manage_invitations',
+        'manage_lookups',
     ];
 
     private function filteredProfiles(Request $request)
@@ -25,11 +30,11 @@ class AdminController
             $value = trim((string) $request->query($filter, ''));
             if ($value === '') continue;
             if ($filter === 'name') {
-                $query->where(fn ($sub) => $sub->where('surname', 'like', "%{$value}%")
+                $query->where(fn($sub) => $sub->where('surname', 'like', "%{$value}%")
                     ->orWhere('first_name', 'like', "%{$value}%")
-                    ->orWhereHas('user', fn ($user) => $user->where('name', 'like', "%{$value}%")));
+                    ->orWhereHas('user', fn($user) => $user->where('name', 'like', "%{$value}%")));
             } elseif ($filter === 'email') {
-                $query->whereHas('user', fn ($user) => $user->where('email', 'like', "%{$value}%"));
+                $query->whereHas('user', fn($user) => $user->where('email', 'like', "%{$value}%"));
             } else {
                 $query->where($filter === 'ippis_no' ? 'ippis_number' : 'file_number', 'like', "%{$value}%");
             }
@@ -42,18 +47,18 @@ class AdminController
         $counts = PersonnelProfile::query()->selectRaw('status, count(*) as total')->groupBy('status')->pluck('total', 'status');
         $recent = $request->user()->hasPermission('view_personnel')
             ? PersonnelProfile::with('user:id,name,email')->orderByDesc('updated_at')->limit(5)->get()->map(function (PersonnelProfile $profile) {
-            $data = $profile->data ?? [];
-            return [
-                'id' => $profile->id,
-                'name' => $profile->user?->name ?: $profile->user?->email,
-                'email' => $profile->user?->email,
-                'role' => $data['Designation'] ?? 'Personnel',
-                'dept' => $data['Department'] ?? '—',
-                'file_number' => $profile->file_number,
-                'status' => $profile->status,
-                'initials' => collect(preg_split('/\s+/', trim($profile->user?->name ?? 'UC')))->filter()->map(fn ($part) => mb_substr($part, 0, 1))->take(2)->implode(''),
-            ];
-        }) : collect();
+                $data = $profile->data ?? [];
+                return [
+                    'id' => $profile->id,
+                    'name' => $profile->user?->name ?: $profile->user?->email,
+                    'email' => $profile->user?->email,
+                    'role' => $data['Designation'] ?? 'Personnel',
+                    'dept' => $data['Department'] ?? '—',
+                    'file_number' => $profile->file_number,
+                    'status' => $profile->status,
+                    'initials' => collect(preg_split('/\s+/', trim($profile->user?->name ?? 'UC')))->filter()->map(fn($part) => mb_substr($part, 0, 1))->take(2)->implode(''),
+                ];
+            }) : collect();
         return response()->json([
             'total_personnel' => (int) $counts->sum(),
             'complete_profiles' => (int) ($counts['complete'] ?? 0),
@@ -67,23 +72,56 @@ class AdminController
 
     public function lookups()
     {
-        $rows = Lookup::where('active', true)->orderBy('category')->orderBy('sort_order')->get();
-        $lookups = $rows->groupBy('category')->map(fn ($items) => $items->pluck('label')->values());
+        $rows = $this->orderedLookupRows(true);
+        $lookups = $rows->groupBy('category')->map(fn($items) => $items->pluck('label')->values());
         $lookups['local_government_by_state'] = $rows->where('category', 'local_government')->whereNotNull('parent')
-            ->groupBy('parent')->map(fn ($items) => $items->pluck('label')->values());
+            ->groupBy('parent')->map(fn($items) => $items->pluck('label')->values());
         return response()->json($lookups);
     }
 
     public function allLookups()
     {
-        return Lookup::orderBy('category')->orderBy('sort_order')->get();
+        return $this->orderedLookupRows();
+    }
+
+    /**
+     * Sort ordinary lookup categories alphabetically, while sorting numeric
+     * levels and steps by their displayed number (1, 2, ... 10).
+     */
+    private function orderedLookupRows(bool $activeOnly = false)
+    {
+        $query = Lookup::query();
+        if ($activeOnly) $query->where('active', true);
+
+        return $query->orderBy('category')->orderBy('sort_order')->orderBy('id')->get()
+            ->groupBy('category')
+            ->flatMap(function ($items, $category) {
+                $items = $items->sort(function ($left, $right) use ($category) {
+                    if (in_array($category, ['level', 'step'], true)) {
+                        preg_match('/\\d+/', $left->label, $leftNumber);
+                        preg_match('/\\d+/', $right->label, $rightNumber);
+                        $byNumber = ((int) ($leftNumber[0] ?? PHP_INT_MAX)) <=> ((int) ($rightNumber[0] ?? PHP_INT_MAX));
+
+                        return $byNumber
+                            ?: strnatcasecmp($left->label, $right->label)
+                            ?: ($left->sort_order <=> $right->sort_order);
+                    }
+
+                    return strnatcasecmp($left->label, $right->label)
+                        ?: ($left->sort_order <=> $right->sort_order);
+                });
+
+                return $items;
+            })
+            ->values();
     }
 
     public function addOption(Request $request)
     {
         $values = $request->validate([
-            'category' => 'required|string|max:80', 'label' => 'required|string|max:120',
-            'parent' => [Rule::requiredIf(fn () => Str::snake((string) $request->input('category')) === 'local_government'), 'nullable', 'string', 'max:120', Rule::in(Lookup::where('category', 'state')->where('active', true)->pluck('label')->all())],
+            'category' => 'required|string|max:80',
+            'label' => 'required|string|max:120',
+            'parent' => [Rule::requiredIf(fn() => Str::snake((string) $request->input('category')) === 'local_government'), 'nullable', 'string', 'max:120', Rule::in(Lookup::where('category', 'state')->where('active', true)->pluck('label')->all())],
             'sort_order' => 'sometimes|integer|min:0|max:10000',
         ]);
         $values['category'] = Str::snake($values['category']);
@@ -100,7 +138,10 @@ class AdminController
         $values = $request->validate(['file' => 'required|file|mimes:csv,txt|max:10240']);
         $stream = fopen($values['file']->getRealPath(), 'r');
         if (!$stream) return response()->json(['message' => 'The CSV file could not be read.'], 422);
-        $line = 0; $imported = 0; $skipped = 0; $errors = [];
+        $line = 0;
+        $imported = 0;
+        $skipped = 0;
+        $errors = [];
         $stateNames = Lookup::where('category', 'state')->where('active', true)->pluck('label')->all();
         while (($row = fgetcsv($stream)) !== false) {
             $line++;
@@ -118,9 +159,14 @@ class AdminController
             }
             $option = Lookup::firstOrCreate(['category' => $category, 'label' => $label, 'parent' => $parent], ['active' => true]);
             if ($option->wasRecentlyCreated) $imported++;
-            elseif (!$option->active) { $option->update(['active' => true]); $imported++; }
-            else $skipped++;
-            if ($line >= 10001) { $errors[] = 'Import stopped at the 10,000-row limit.'; break; }
+            elseif (!$option->active) {
+                $option->update(['active' => true]);
+                $imported++;
+            } else $skipped++;
+            if ($line >= 10001) {
+                $errors[] = 'Import stopped at the 10,000-row limit.';
+                break;
+            }
         }
         fclose($stream);
         return response()->json(['imported' => $imported, 'skipped' => $skipped, 'errors' => array_slice($errors, 0, 100)]);
@@ -131,7 +177,8 @@ class AdminController
         $values = $request->validate([
             'label' => ['sometimes', 'required', 'string', 'max:120', Rule::unique('lookups', 'label')->where('category', $lookup->category)->ignore($lookup->id)],
             'parent' => [$lookup->category === 'local_government' ? 'required' : 'sometimes', 'nullable', 'string', 'max:120', Rule::in(Lookup::where('category', 'state')->where('active', true)->pluck('label')->all())],
-            'active' => 'sometimes|boolean', 'sort_order' => 'sometimes|integer|min:0|max:10000',
+            'active' => 'sometimes|boolean',
+            'sort_order' => 'sometimes|integer|min:0|max:10000',
         ]);
         $lookup->update($values);
         return response()->json($lookup->fresh());
@@ -161,8 +208,13 @@ class AdminController
         $first = fgetcsv($stream);
         $header = strtolower(trim((string) ($first[0] ?? '')));
         $line = 1;
-        if (in_array($header, ['email', 'email address', 'personal email'], true)) { $first = null; $line = 2; }
-        $imported = 0; $skipped = 0; $errors = [];
+        if (in_array($header, ['email', 'email address', 'personal email'], true)) {
+            $first = null;
+            $line = 2;
+        }
+        $imported = 0;
+        $skipped = 0;
+        $errors = [];
         do {
             $row = $first ?? fgetcsv($stream);
             $first = null;
@@ -172,10 +224,14 @@ class AdminController
             elseif (User::where('email', $email)->exists()) $skipped++;
             else {
                 $invite = ApprovedEmail::firstOrCreate(['email' => $email], ['created_by' => $request->user()->id]);
-                if ($invite->wasRecentlyCreated) $imported++; else $skipped++;
+                if ($invite->wasRecentlyCreated) $imported++;
+                else $skipped++;
             }
             $line++;
-            if ($line > 10002) { $errors[] = 'Import stopped at the 10,000-row limit.'; break; }
+            if ($line > 10002) {
+                $errors[] = 'Import stopped at the 10,000-row limit.';
+                break;
+            }
         } while (true);
         fclose($stream);
         return response()->json(['imported' => $imported, 'skipped' => $skipped, 'errors' => array_slice($errors, 0, 100)]);
@@ -204,13 +260,13 @@ class AdminController
     {
         $output = [];
         foreach ($data as $key => $value) {
-            $label = $prefix === '' ? (string) $key : $prefix.' · '.$key;
+            $label = $prefix === '' ? (string) $key : $prefix . ' · ' . $key;
             if (preg_match('/upload|passport|photo|attachment|document|_path|certificate.*(file|path)/i', (string) $key)) continue;
             if (is_array($value)) {
                 if (array_is_list($value)) {
                     if (!$value) continue;
-                    if (!is_array($value[0])) $output[$label] = implode('; ', array_map(fn ($item) => (string) $item, $value));
-                    else foreach ($value as $index => $item) if (is_array($item)) $output += $this->flatten($item, $label.' '.($index + 1));
+                    if (!is_array($value[0])) $output[$label] = implode('; ', array_map(fn($item) => (string) $item, $value));
+                    else foreach ($value as $index => $item) if (is_array($item)) $output += $this->flatten($item, $label . ' ' . ($index + 1));
                 } else $output += $this->flatten($value, $label);
             } elseif ($value !== null) $output[$label] = is_bool($value) ? ($value ? 'Yes' : 'No') : (string) $value;
         }
@@ -220,21 +276,29 @@ class AdminController
     public function export(Request $request)
     {
         $profiles = $this->filteredProfiles($request)->with('user:id,name,email')->orderBy('id')->get();
-        $rows = []; $headers = ['Personnel name', 'Personnel email', 'Profile status'];
+        $rows = [];
+        $headers = ['Personnel name', 'Personnel email', 'Profile status'];
         foreach ($profiles as $profile) {
-            $row = ['Personnel name' => $profile->user?->name ?? trim(($profile->first_name ?? '').' '.($profile->surname ?? '')),
-                'Personnel email' => $profile->user?->email ?? '', 'Profile status' => $profile->status];
+            $row = [
+                'Personnel name' => $profile->user?->name ?? trim(($profile->first_name ?? '') . ' ' . ($profile->surname ?? '')),
+                'Personnel email' => $profile->user?->email ?? '',
+                'Profile status' => $profile->status
+            ];
             $row += $this->flatten($profile->data ?? []);
-            $headers = array_values(array_unique([...$headers, ...array_keys($row)])); $rows[] = $row;
+            $headers = array_values(array_unique([...$headers, ...array_keys($row)]));
+            $rows[] = $row;
         }
-        $workbook = new Spreadsheet(); $sheet = $workbook->getActiveSheet(); $sheet->setTitle('Personnel');
-        foreach ($headers as $i => $header) $sheet->setCellValueExplicit(Coordinate::stringFromColumnIndex($i + 1).'1', $header, DataType::TYPE_STRING);
+        $workbook = new Spreadsheet();
+        $sheet = $workbook->getActiveSheet();
+        $sheet->setTitle('Personnel');
+        foreach ($headers as $i => $header) $sheet->setCellValueExplicit(Coordinate::stringFromColumnIndex($i + 1) . '1', $header, DataType::TYPE_STRING);
         foreach ($rows as $rowIndex => $row) foreach ($headers as $columnIndex => $header) {
-            $sheet->setCellValueExplicit(Coordinate::stringFromColumnIndex($columnIndex + 1).($rowIndex + 2), (string) ($row[$header] ?? ''), DataType::TYPE_STRING);
+            $sheet->setCellValueExplicit(Coordinate::stringFromColumnIndex($columnIndex + 1) . ($rowIndex + 2), (string) ($row[$header] ?? ''), DataType::TYPE_STRING);
         }
         $lastColumn = Coordinate::stringFromColumnIndex(count($headers));
-        $sheet->freezePane('A2'); $sheet->setAutoFilter('A1:'.$lastColumn.max(1, count($rows) + 1));
-        return response()->streamDownload(fn () => (new Xlsx($workbook))->save('php://output'), 'personnel_records.xlsx', [
+        $sheet->freezePane('A2');
+        $sheet->setAutoFilter('A1:' . $lastColumn . max(1, count($rows) + 1));
+        return response()->streamDownload(fn() => (new Xlsx($workbook))->save('php://output'), 'personnel_records.xlsx', [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             'Cache-Control' => 'private, no-store, max-age=0',
         ]);
@@ -243,7 +307,8 @@ class AdminController
     public function createAdmin(Request $request)
     {
         $values = $request->validate([
-            'name' => 'required|string|max:120', 'email' => 'required|email:rfc|unique:users,email|max:254',
+            'name' => 'required|string|max:120',
+            'email' => 'required|email:rfc|unique:users,email|max:254',
             'password' => ['required', 'confirmed', Password::min(14)->mixedCase()->numbers()->symbols()],
             'permissions' => 'required|array|min:1',
             'permissions.*' => ['required', 'string', Rule::in(self::ADMIN_PERMISSIONS)],
