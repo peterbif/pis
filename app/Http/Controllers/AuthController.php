@@ -44,7 +44,7 @@ class AuthController
     {
         $values = $request->validate([
             'email' => 'required|email:rfc|max:254',
-            'password' => ['required', 'string', 'max:200', 'confirmed', Password::min(12)->mixedCase()->numbers()->symbols()],
+            'password' => ['required', 'string', 'max:200', 'confirmed', Password::min(8)->mixedCase()->numbers()->symbols()],
         ]);
         $email = Str::lower($values['email']);
         if (!ApprovedEmail::where('email', $email)->whereNull('used_at')->exists() || User::where('email', $email)->exists()) {
