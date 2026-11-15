@@ -2688,11 +2688,6 @@ async function signOut() {
                   <option value="" disabled>
                     {{
                       dependentStateField(f) &&
-                <template v-if="lookupKey(f)">
-                  <select
-                    :value="profileData[f] || ''"
-                    :disabled="
-                      !!dependentStateField(f) &&
                       !profileData[dependentStateField(f)]
                         ? "Choose a state first"
                         : "Select an option"
@@ -2702,8 +2697,6 @@ async function signOut() {
                     v-for="choice in getOptions(f)"
                     :key="choice"
                     :value="choice"
-                    "
-                    @change="setProfileDropdown(f, $event.target.value)"
                   >
                     {{ choice }}
                   </option></select
@@ -2729,38 +2722,13 @@ async function signOut() {
                     placeholder="Type the option you need"
                     @keyup.enter="savePersonnelDropdownOption(f)"
                   /><button
-                    <option value="" disabled>
-                      {{
-                        dependentStateField(f) &&
-                        !profileData[dependentStateField(f)]
-                          ? "Choose a state first"
-                          : "Select an option"
-                      }}
-                    </option>
-                    <option
-                      v-for="choice in getOptions(f)"
-                      :key="choice"
-                      :value="choice"
-                    >
-                      {{ choice }}
-                    </option>
-                  </select>
-                  <button
                     type="button"
                     :disabled="dropdownOptionBusy || !newDropdownOption.trim()"
                     @click="savePersonnelDropdownOption(f)"
-                    class="add-personnel-option"
-                    :disabled="
-                      !!dependentStateField(f) &&
-                      !profileData[dependentStateField(f)]
-                    "
-                    @click="startAddDropdown(f)"
                   >
                     {{ dropdownOptionBusy ? "Adding…" : "Add & select" }}
-                    Can’t find an option? Add it
                   </button>
                 </div>
-                </template>
                 <label
                   v-else-if="
                     f.includes('upload') || f.toLowerCase().includes('passport')
