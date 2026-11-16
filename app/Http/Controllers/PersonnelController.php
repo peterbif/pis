@@ -52,6 +52,10 @@ class PersonnelController
     public function show(Request $request)
     {
         $profile = $request->user()->profile()->firstOrCreate(['user_id' => $request->user()->id]);
+        $data = $profile->data ?? [];
+        $data['Date of first appointment'] = $profile->date_of_first_appointment?->format('Y-m-d')
+            ?? ($data['Date of first appointment'] ?? null);
+        $profile->setAttribute('data', $data);
         return response()->json(['profile' => $profile, 'documents' => $request->user()->documents()->latest()->get()]);
     }
 
@@ -65,6 +69,7 @@ class PersonnelController
             'data.First name' => 'nullable|string|max:120',
             'data.Other names' => 'nullable|string|max:180',
             'data.Maiden name' => 'nullable|string|max:120',
+            'data.Date of first appointment' => 'nullable|date|before_or_equal:today',
             'data.Pension PIN' => 'nullable|string|max:80',
             'data.Email' => ['required', 'email:rfc', 'max:254', Rule::in([$request->user()->email])],
             'data.Phone number' => ['nullable', 'string', 'max:32', 'regex:/^\+?[0-9 ()-]{7,24}$/'],
@@ -165,10 +170,11 @@ class PersonnelController
         $data = array_replace_recursive($profile->data ?? [], $values['data']);
         if (array_key_exists('education', $values['data'])) $data['education'] = $values['data']['education'];
         if (array_key_exists('olevel_results', $values['data'])) $data['olevel_results'] = $values['data']['olevel_results'];
-        $requiredFields = ['Title', 'Surname', 'First name', 'Gender', 'Date of birth', 'Email', 'Phone number', 'File number', 'IPPIS number', 'Department', 'Designation', 'Salary structure', 'Level', 'Step'];
+        $requiredFields = ['Title', 'Surname', 'First name', 'Gender', 'Date of birth', 'Email', 'Phone number', 'File number', 'IPPIS number', 'Date of first appointment', 'Department', 'Designation', 'Salary structure', 'Level', 'Step'];
         $profileReadyForReview = collect($requiredFields)->every(fn($field) => isset($data[$field]) && trim((string) $data[$field]) !== '');
         $profile->update([
             'data' => $data,
+            'date_of_first_appointment' => $data['Date of first appointment'] ?? null,
             'file_number' => $data['File number'] ?? $profile->file_number,
             'ippis_number' => $data['IPPIS number'] ?? $profile->ippis_number,
             'surname' => $data['Surname'] ?? $profile->surname,

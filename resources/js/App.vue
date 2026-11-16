@@ -217,6 +217,7 @@ const sections = [
     fields: [
       "File number",
       "IPPIS number",
+      "Date of first appointment",
       "PFA name",
       "Pension PIN",
       "Salary structure",
@@ -1032,11 +1033,28 @@ async function saveProfile(advance = false) {
   }
   try {
     const data = profilePayload();
+    if (
+      advance &&
+      profileTab.value === 0 &&
+      !String(data["Date of first appointment"] || "").trim()
+    ) {
+      notify(
+        "Please enter your date of first appointment before continuing.",
+        "warning"
+      );
+      return;
+    }
     const result = await store.saveProfile({ data });
     profileStatus.value = result.profile.status;
     notify("Your profile has been saved.");
     if (advance && profileTab.value < 7) profileTab.value++;
-    else if (advance) notify("Profile submitted for review.");
+    else if (advance && result.profile.status === "in_review")
+      notify("Your profile has been submitted for review.");
+    else if (advance)
+      notify(
+        "Your profile is saved as a draft. Complete the required fields, including your date of first appointment, before submitting.",
+        "warning"
+      );
   } catch (e) {
     notify(humanError(e, "We could not save your profile. Please try again."));
   }
@@ -1639,9 +1657,9 @@ async function signOut() {
                   v-model="signupPassword"
                   :type="showSignupPassword ? 'text' : 'password'"
                   autocomplete="new-password"
-                  minlength="8"
+                  minlength="12"
                   required
-                  placeholder="8+ characters, letters, number and symbol"
+                  placeholder="12+ characters, letters, number and symbol"
                 /><button
                   class="password-toggle"
                   type="button"
@@ -2739,7 +2757,9 @@ async function signOut() {
                     f === 'Permanent address',
                 }"
               >
-                <label>{{ f }} <i v-if="j < 2">*</i></label
+                <label
+                  >{{ f }}
+                  <i v-if="j < 2 || f === 'Date of first appointment'">*</i></label
                 >
                 <template v-if="lookupKey(f)">
                   <select

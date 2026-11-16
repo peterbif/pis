@@ -48,7 +48,7 @@ class AuthController
         ]);
         $email = Str::lower($values['email']);
         if (!ApprovedEmail::where('email', $email)->whereNull('used_at')->exists() || User::where('email', $email)->exists()) {
-            return response()->json(['message' => 'This email is not on the approved personnel list. Please contact your administrator.'], 422);
+            return response()->json(['message' => 'This email is not on the approved personnel list. Please contact the administrators @ SmartClass Room 2.'], 422);
         }
         $code = (string) random_int(100000, 999999);
         $passwordHash = Hash::make($values['password']);
