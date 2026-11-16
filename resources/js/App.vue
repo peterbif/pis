@@ -61,7 +61,15 @@ watch(showOptions, (value) => {
 const profileData = ref({}),
   profileStatus = ref("incomplete");
 const educationDrafts = ref([{}]);
-const olevelDrafts = ref([{ sitting: "1st", subjects: [{}] }]);
+const olevelDrafts = ref([]);
+const isJuniorStaff = computed(() =>
+  (Array.isArray(profileData.value.job_categories)
+    ? profileData.value.job_categories
+    : []
+  ).some(
+    (category) => String(category).trim().toLowerCase().startsWith("junior staff")
+  )
+);
 const nursingSchoolProfile = computed(() =>
   educationDrafts.value.some((row) =>
     [row.institution, row.course, row.qualification].some((value) =>
@@ -74,13 +82,26 @@ const canAddOlevelSitting = computed(() =>
     ? olevelDrafts.value.length === 0
     : olevelDrafts.value.length < 10
 );
+const hasCompleteOlevelResult = computed(() =>
+  olevelDrafts.value.some(
+    (exam) =>
+      String(exam.exam_year || "").trim() &&
+      String(exam.exam_type || "").trim() &&
+      String(exam.sitting || "").trim() &&
+      (exam.subjects || []).some(
+        (subject) =>
+          String(subject.subject || "").trim() &&
+          String(subject.grade || "").trim()
+      )
+  )
+);
 const passportPrintUrl = ref("");
 const printableSections = computed(() =>
   sections
-    .map((section, index) => ({
+    .map((section) => ({
       ...section,
       rows:
-        index === 4
+        section.title === "Education"
           ? [
               ...educationDrafts.value
                 .filter((row) => Object.values(row || {}).some(Boolean))
@@ -98,15 +119,19 @@ const printableSections = computed(() =>
                 })),
               ...olevelDrafts.value
                 .filter(
-                  (row) => row.exam_type || row.exam_year || row.exam_number
+                  (row) =>
+                    row.exam_type ||
+                    row.exam_year ||
+                    (row.subjects || []).some(
+                      (subject) => subject.subject || subject.grade
+                    )
                 )
                 .map((exam, i) => ({
-                  label: `O’Level · ${exam.exam_type || "Exam"} · Sitting ${
-                    i + 1
+                  label: `O’Level · ${exam.exam_type || "Exam"} · ${
+                    exam.sitting || `Sitting ${i + 1}`
                   }`,
                   value: [
                     exam.exam_year ? `Year ${exam.exam_year}` : "",
-                    exam.exam_number ? `Exam No. ${exam.exam_number}` : "",
                     (exam.subjects || [])
                       .filter((subject) => subject.subject || subject.grade)
                       .map(
@@ -121,7 +146,7 @@ const printableSections = computed(() =>
                     .join(" · "),
                 })),
             ]
-          : index === 5
+          : section.title === "Job categorization"
           ? [
               {
                 label: "Job categorization",
@@ -271,6 +296,11 @@ const sections = [
     ],
   },
   {
+    title: "Job categorization",
+    icon: "mdi-tag-multiple-outline",
+    fields: ["Select every category that applies"],
+  },
+  {
     title: "Education",
     icon: "mdi-school-outline",
     fields: [
@@ -280,11 +310,6 @@ const sections = [
       "Year of graduation",
       "Certificate upload",
     ],
-  },
-  {
-    title: "Job categorization",
-    icon: "mdi-tag-multiple-outline",
-    fields: ["Select every category that applies"],
   },
   {
     title: "Bank details",
@@ -836,13 +861,20 @@ async function loadOwnProfile() {
     educationDrafts.value = profileData.value.education?.length
       ? profileData.value.education
       : [{}];
-    olevelDrafts.value = profileData.value.olevel_results?.length
-      ? profileData.value.olevel_results.map((exam) => ({
-          ...exam,
-          sitting: exam.sitting || "1st",
-          subjects: exam.subjects?.length ? exam.subjects : [{}],
-        }))
-      : [{ sitting: "1st", subjects: [{}] }];
+    olevelDrafts.value = (profileData.value.olevel_results || [])
+      .filter((exam) =>
+        exam.exam_year ||
+        exam.exam_type ||
+        (exam.subjects || []).some(
+          (subject) => subject.subject || subject.grade
+        )
+      )
+      .map((exam) => ({
+        exam_year: exam.exam_year || "",
+        exam_type: exam.exam_type || "",
+        sitting: exam.sitting || "1st",
+        subjects: exam.subjects?.length ? exam.subjects : [{}],
+      }));
     profileDocuments.value = documents || [];
     await loadPassportPhoto();
   } catch {
@@ -941,7 +973,7 @@ function addOlevelSitting() {
 }
 function removeOlevelSitting(index) {
   if (olevelDrafts.value.length > 1) olevelDrafts.value.splice(index, 1);
-  else olevelDrafts.value = [{ sitting: "1st", subjects: [{}] }];
+  else olevelDrafts.value = [];
 }
 function addOlevelSubject(exam) {
   if (exam.subjects.length < 30) exam.subjects.push({});
@@ -961,13 +993,14 @@ function profilePayload() {
         (exam) =>
           exam.exam_year ||
           exam.exam_type ||
-          exam.exam_number ||
           (exam.subjects || []).some(
             (subject) => subject.subject || subject.grade
           )
       )
       .map((exam) => ({
-        ...exam,
+        exam_year: exam.exam_year || "",
+        exam_type: exam.exam_type || "",
+        sitting: exam.sitting || "1st",
         subjects: (exam.subjects || []).filter(
           (subject) => subject.subject || subject.grade
         ),
@@ -1044,17 +1077,37 @@ async function saveProfile(advance = false) {
       );
       return;
     }
+    const juniorOlevelMissing =
+      advance &&
+      sections[profileTab.value]?.title === "Education" &&
+      isJuniorStaff.value &&
+      !hasCompleteOlevelResult.value;
+    const juniorOlevelMessage =
+      "Junior Staff must add an O’Level result with the exam year, exam body, sitting, and at least one subject and grade before continuing.";
     const result = await store.saveProfile({ data });
     profileStatus.value = result.profile.status;
-    notify("Your profile has been saved.");
-    if (advance && profileTab.value < 7) profileTab.value++;
-    else if (advance && result.profile.status === "in_review")
-      notify("Your profile has been submitted for review.");
-    else if (advance)
+    if (juniorOlevelMissing) {
       notify(
-        "Your profile is saved as a draft. Complete the required fields, including your date of first appointment, before submitting.",
+        `${juniorOlevelMessage} Your entries have been saved.`,
         "warning"
       );
+      return;
+    }
+    if (advance && profileTab.value < sections.length - 1) {
+      profileTab.value++;
+      notify("Your profile has been saved.");
+    } else if (advance && result.profile.status === "in_review") {
+      notify("Your profile has been submitted for review.");
+    } else if (advance) {
+      notify(
+        isJuniorStaff.value && !hasCompleteOlevelResult.value
+          ? "Your profile is saved as a draft. Junior Staff must add a complete O’Level result before submitting."
+          : "Your profile is saved as a draft. Complete the required fields, including your date of first appointment, before submitting.",
+        "warning"
+      );
+    } else {
+      notify("Your profile has been saved.");
+    }
   } catch (e) {
     notify(humanError(e, "We could not save your profile. Please try again."));
   }
@@ -1657,9 +1710,9 @@ async function signOut() {
                   v-model="signupPassword"
                   :type="showSignupPassword ? 'text' : 'password'"
                   autocomplete="new-password"
-                  minlength="8"
+                  minlength="12"
                   required
-                  placeholder="8+ characters, letters, number and symbol"
+                  placeholder="12+ characters, letters, number and symbol"
                 /><button
                   class="password-toggle"
                   type="button"
@@ -2358,7 +2411,10 @@ async function signOut() {
               </div>
               <span class="required-note"><i>*</i> Required</span>
             </div>
-            <div v-if="profileTab === 5" class="job-options">
+            <div
+              v-if="sections[profileTab].title === 'Job categorization'"
+              class="job-options"
+            >
               <label
                 v-for="x in getOptions('Select every category that applies')"
                 :key="x"
@@ -2413,7 +2469,10 @@ async function signOut() {
                 </button>
               </div>
             </div>
-            <div v-else-if="profileTab === 4" class="education-list">
+            <div
+              v-else-if="sections[profileTab].title === 'Education'"
+              class="education-list"
+            >
               <article
                 v-for="(education, index) in educationDrafts"
                 :key="index"
@@ -2561,14 +2620,21 @@ async function signOut() {
                       >SECONDARY SCHOOL QUALIFICATIONS</span
                     >
                     <h3>O’Level result(s)</h3>
-                    <p>
-                      Enter each examination sitting and the subjects with their
-                      grades.
+                    <p v-if="isJuniorStaff">
+                      Required for Junior Staff. Enter at least one complete
+                      result with an exam year, exam body, sitting, and a
+                      subject with its grade.
+                    </p>
+                    <p v-else>
+                      Optional for your selected job category. Add your O’Level
+                      results if they apply to you.
                     </p>
                   </div>
                   <span class="olevel-limit-pill">{{
+                    isJuniorStaff ? "Required for Junior Staff · " : "Optional · "
+                  }}{{
                     nursingSchoolProfile
-                      ? "One sitting for School of Nursing"
+                      ? "One sitting"
                       : "Up to two sittings per exam body"
                   }}</span>
                 </div>
@@ -2583,7 +2649,7 @@ async function signOut() {
                         >Examination sitting
                         {{ String(examIndex + 1).padStart(2, "0") }}</b
                       ><small
-                        >Enter the details as shown on your result slip.</small
+                        >Add whichever details and subjects you have.</small
                       >
                     </div>
                     <button
@@ -2629,14 +2695,6 @@ async function signOut() {
                           {{ type }}
                         </option>
                       </select>
-                    </div>
-                    <div>
-                      <label>Exam number</label
-                      ><input
-                        v-model="exam.exam_number"
-                        maxlength="60"
-                        placeholder="Your examination number"
-                      />
                     </div>
                     <div>
                       <label>Sitting</label
@@ -2736,12 +2794,15 @@ async function signOut() {
                   :disabled="!canAddOlevelSitting"
                   @click="addOlevelSitting"
                 >
-                  ＋ Add another exam sitting
+                  {{
+                    olevelDrafts.length
+                      ? "＋ Add another exam sitting"
+                      : "＋ Add O’Level result"
+                  }}
                 </button>
                 <p class="olevel-rule-note">
-                  For other schools, no more than two sittings of the same
-                  examination body are allowed. School of Nursing applicants may
-                  enter one sitting only.
+                  School of Nursing records allow one sitting. Other personnel
+                  may enter up to two sittings per examination body.
                 </p>
               </section>
             </div>

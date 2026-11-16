@@ -91,13 +91,14 @@ class PersonnelController
             'data.education.*.qualification' => ['nullable', 'string', 'max:120'],
             'data.education.*.year' => 'nullable|integer|between:1950,2100',
             'data.olevel_results' => 'sometimes|array|max:10',
-            'data.olevel_results.*.exam_year' => 'required|integer|between:1950,' . now()->year,
-            'data.olevel_results.*.exam_type' => 'required|string|max:80',
-            'data.olevel_results.*.exam_number' => 'required|string|max:60',
-            'data.olevel_results.*.sitting' => 'required|in:1st,2nd',
-            'data.olevel_results.*.subjects' => 'required|array|min:1|max:30',
-            'data.olevel_results.*.subjects.*.subject' => 'required|string|max:120',
-            'data.olevel_results.*.subjects.*.grade' => ['required', Rule::in(['A1', 'B2', 'B3', 'C4', 'C5', 'C6', 'D7', 'E8', 'F9'])],
+            'data.olevel_results.*' => 'array',
+            'data.olevel_results.*.exam_year' => 'nullable|integer|between:1950,' . now()->year,
+            'data.olevel_results.*.exam_type' => 'nullable|string|max:80',
+            'data.olevel_results.*.sitting' => 'sometimes|nullable|in:1st,2nd',
+            'data.olevel_results.*.subjects' => 'sometimes|array|max:30',
+            'data.olevel_results.*.subjects.*' => 'array',
+            'data.olevel_results.*.subjects.*.subject' => 'nullable|string|max:120',
+            'data.olevel_results.*.subjects.*.grade' => ['nullable', Rule::in(['A1', 'B2', 'B3', 'C4', 'C5', 'C6', 'D7', 'E8', 'F9'])],
             'data.job_categories' => 'sometimes|array|max:30',
             'data.job_categories.*' => ['string', 'max:120'],
         ];
@@ -143,15 +144,43 @@ class PersonnelController
         $jobCategories = Lookup::where('category', 'job_categorization')->where('active', true)->pluck('label')->all();
         $jobCategories = array_merge($jobCategories, $profile->data['job_categories'] ?? []);
         $rules['data.job_categories.*'][] = Rule::in($jobCategories);
-        $values = $request->validate($rules); {
-            $examResults = collect($values['data']['olevel_results'] ?? ($profile->data['olevel_results'] ?? []));
+        $values = $request->validate($rules);
+        $jobCategories = $values['data']['job_categories'] ?? ($profile->data['job_categories'] ?? []);
+        $isJuniorStaff = collect(is_array($jobCategories) ? $jobCategories : [])
+            ->contains(fn($category) => str_starts_with(strtolower(trim((string) $category)), 'junior staff'));
+        $submittedOlevelResults = collect($values['data']['olevel_results'] ?? []);
+        $hasOlevelData = $submittedOlevelResults->contains(
+            fn($exam) =>
+            filled($exam['exam_year'] ?? null)
+                || filled($exam['exam_type'] ?? null)
+                || collect($exam['subjects'] ?? [])->contains(
+                    fn($subject) =>
+                    filled($subject['subject'] ?? null) || filled($subject['grade'] ?? null)
+                )
+        );
+        if (!$isJuniorStaff && $hasOlevelData) {
+            throw ValidationException::withMessages([
+                'data.olevel_results' => ['O’Level results may only be entered for personnel categorized as Junior staff.'],
+            ]);
+        } {
+            $examResults = $isJuniorStaff
+                ? $submittedOlevelResults->filter(
+                    fn($exam) =>
+                    filled($exam['exam_year'] ?? null)
+                        || filled($exam['exam_type'] ?? null)
+                        || collect($exam['subjects'] ?? [])->contains(
+                            fn($subject) =>
+                            filled($subject['subject'] ?? null) || filled($subject['grade'] ?? null)
+                        )
+                )->values()
+                : collect();
             $educationForRule = $values['data']['education'] ?? ($profile->data['education'] ?? []);
             $isNursingSchool = collect($educationForRule)->contains(fn($row) => str_contains(strtolower($row['institution'] ?? ''), 'school of nursing'));
             if ($isNursingSchool && $examResults->count() > 1) {
                 throw ValidationException::withMessages(['data.olevel_results' => ['School of Nursing records may include one O’Level examination sitting only.']]);
             }
             foreach (
-                $examResults->groupBy(function ($exam) {
+                $examResults->filter(fn($exam) => filled($exam['exam_type'] ?? null))->groupBy(function ($exam) {
                     $type = strtolower(trim($exam['exam_type']));
                     if (str_contains($type, 'wassce')) return 'waec';
                     if (str_contains($type, 'neco')) return 'neco';
@@ -162,14 +191,34 @@ class PersonnelController
                 if ($sittings->count() > 2) {
                     throw ValidationException::withMessages(['data.olevel_results' => ["A maximum of two sittings is allowed for the {$body} examination body."]]);
                 }
-                if ($sittings->pluck('sitting')->unique()->count() !== $sittings->count()) {
+                $chosenSittings = $sittings->pluck('sitting')->filter()->values();
+                if ($chosenSittings->count() > 1 && $chosenSittings->unique()->count() !== $chosenSittings->count()) {
                     throw ValidationException::withMessages(['data.olevel_results' => ["Choose a different sitting for each {$body} result."]]);
                 }
             }
         }
         $data = array_replace_recursive($profile->data ?? [], $values['data']);
         if (array_key_exists('education', $values['data'])) $data['education'] = $values['data']['education'];
-        if (array_key_exists('olevel_results', $values['data'])) $data['olevel_results'] = $values['data']['olevel_results'];
+        $olevelResultsToSave = $values['data']['olevel_results'] ?? ($profile->data['olevel_results'] ?? []);
+        $data['olevel_results'] = $isJuniorStaff
+            ? collect($olevelResultsToSave)
+            ->filter(
+                fn($exam) =>
+                filled($exam['exam_year'] ?? null)
+                    || filled($exam['exam_type'] ?? null)
+                    || collect($exam['subjects'] ?? [])->contains(
+                        fn($subject) =>
+                        filled($subject['subject'] ?? null) || filled($subject['grade'] ?? null)
+                    )
+            )
+            ->map(function ($exam) {
+                unset($exam['exam_number']);
+                $exam['subjects'] = collect($exam['subjects'] ?? [])
+                    ->filter(fn($subject) => filled($subject['subject'] ?? null) || filled($subject['grade'] ?? null))
+                    ->values()->all();
+                return $exam;
+            })->values()->all()
+            : [];
         $requiredFields = ['Title', 'Surname', 'First name', 'Gender', 'Date of birth', 'Email', 'Phone number', 'File number', 'IPPIS number', 'Date of first appointment', 'Department', 'Designation', 'Salary structure', 'Level', 'Step'];
         $profileReadyForReview = collect($requiredFields)->every(fn($field) => isset($data[$field]) && trim((string) $data[$field]) !== '');
         $profile->update([

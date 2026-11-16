@@ -2407,6 +2407,14 @@ tbody tr:hover {
     line-height: 1.55
 }
 
+.olevel-junior-note {
+    padding: 13px 15px;
+    border: 1px solid #d6e8da;
+    border-radius: 10px;
+    background: #f3f8f4;
+    color: #315b42
+}
+
 @media(max-width:700px) {
     .olevel-panel {
         padding: 15px
