@@ -3293,6 +3293,22 @@ tbody tr:hover {
     margin-left: 3px;
 }
 
+.upload-disabled,
+.certificate-upload.upload-disabled {
+    cursor: not-allowed;
+    color: #68776e;
+    background: #f2f5f2;
+    border-color: #d7dfd8;
+}
+
+.upload-disabled b {
+    color: #526057;
+}
+
+.upload-disabled small {
+    color: #7c887f;
+}
+
 .private-document-link {
     display: flex;
     align-items: center;

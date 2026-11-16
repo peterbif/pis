@@ -12,6 +12,7 @@ import Swal from "sweetalert2";
 import { usePersonnelStore } from "./stores/personnel";
 const store = usePersonnelStore();
 const logoAsset = "/images/uch-logo.png";
+const documentUploadsEnabled = false;
 const nav = ref("Overview"),
   profileTab = ref(0),
   search = ref(""),
@@ -78,7 +79,7 @@ const nursingSchoolProfile = computed(() =>
   )
 );
 const canAddOlevelSitting = computed(() =>
-  nursingSchoolProfile.value
+  isJuniorStaff.value && nursingSchoolProfile.value
     ? olevelDrafts.value.length === 0
     : olevelDrafts.value.length < 10
 );
@@ -1010,6 +1011,11 @@ function profilePayload() {
 async function uploadProfileDocument(event, category, index = null) {
   const file = event.target.files?.[0];
   if (!file) return;
+  if (!documentUploadsEnabled) {
+    notify("Document uploads are temporarily unavailable.", "info");
+    event.target.value = "";
+    return;
+  }
   try {
     const { document } = await store.uploadDocument(category, file, index);
     profileDocuments.value.unshift(document);
@@ -2578,7 +2584,7 @@ async function signOut() {
                     />
                   </div>
                 </div>
-                <label class="certificate-upload"
+                <label v-if="documentUploadsEnabled" class="certificate-upload"
                   ><input
                     type="file"
                     accept="application/pdf,image/jpeg,image/png"
@@ -2591,6 +2597,14 @@ async function signOut() {
                     "
                   /><v-icon icon="mdi-paperclip" size="16" /> Attach certificate
                   <small>PDF, JPG or PNG · Max 5 MB</small></label
+                ><div
+                  v-else
+                  class="certificate-upload upload-disabled"
+                  aria-disabled="true"
+                >
+                  <v-icon icon="mdi-cloud-off-outline" size="16" />
+                  Certificate uploads are temporarily unavailable.
+                </div
                 ><button
                   v-for="doc in profileDocuments.filter(
                     (d) =>
@@ -2631,11 +2645,11 @@ async function signOut() {
                     </p>
                   </div>
                   <span class="olevel-limit-pill">{{
-                    isJuniorStaff ? "Required for Junior Staff · " : "Optional · "
-                  }}{{
-                    nursingSchoolProfile
-                      ? "One sitting"
-                      : "Up to two sittings per exam body"
+                    isJuniorStaff
+                      ? nursingSchoolProfile
+                        ? "Required · One sitting"
+                        : "Required · Up to two sittings per exam body"
+                      : "Optional · No completion requirement"
                   }}</span>
                 </div>
                 <article
@@ -2686,6 +2700,7 @@ async function signOut() {
                           :key="type"
                           :value="type"
                           :disabled="
+                            isJuniorStaff &&
                             olevelDrafts.filter(
                               (other) =>
                                 other !== exam && other.exam_type === type
@@ -2702,6 +2717,7 @@ async function signOut() {
                         <option
                           value="1st"
                           :disabled="
+                            isJuniorStaff &&
                             olevelDrafts.some(
                               (other) =>
                                 other !== exam &&
@@ -2715,6 +2731,7 @@ async function signOut() {
                         <option
                           value="2nd"
                           :disabled="
+                            isJuniorStaff &&
                             olevelDrafts.some(
                               (other) =>
                                 other !== exam &&
@@ -2800,9 +2817,13 @@ async function signOut() {
                       : "＋ Add O’Level result"
                   }}
                 </button>
-                <p class="olevel-rule-note">
-                  School of Nursing records allow one sitting. Other personnel
-                  may enter up to two sittings per examination body.
+                <p v-if="isJuniorStaff" class="olevel-rule-note">
+                  Junior Staff in the School of Nursing may enter one sitting;
+                  other Junior Staff may enter up to two sittings per exam body.
+                </p>
+                <p v-else class="olevel-rule-note">
+                  You may leave this section empty or submit it with partial
+                  details; O’Level completion is not required for your category.
                 </p>
               </section>
             </div>
@@ -2820,7 +2841,15 @@ async function signOut() {
               >
                 <label
                   >{{ f }}
-                  <i v-if="j < 2 || f === 'Date of first appointment'">*</i></label
+                  <i
+                    v-if="
+                      (j < 2 &&
+                        !f.toLowerCase().includes('upload') &&
+                        !f.toLowerCase().includes('passport')) ||
+                      f === 'Date of first appointment'
+                    "
+                    >*</i
+                  ></label
                 >
                 <template v-if="lookupKey(f)">
                   <select
@@ -2854,29 +2883,34 @@ async function signOut() {
                     Can’t find an option? Add it
                   </button>
                 </template>
-                <label
+                <template
                   v-else-if="
                     f.includes('upload') || f.toLowerCase().includes('passport')
                   "
-                  class="upload-area secure-upload"
-                  ><input
-                    type="file"
-                    :accept="
-                      f.toLowerCase().includes('passport')
-                        ? 'image/jpeg,image/png,image/webp'
-                        : 'application/pdf,image/jpeg,image/png'
-                    "
-                    @change="
-                      uploadProfileDocument(
-                        $event,
+                  ><label v-if="documentUploadsEnabled" class="upload-area secure-upload"
+                    ><input
+                      type="file"
+                      :accept="
                         f.toLowerCase().includes('passport')
-                          ? 'passport'
-                          : 'education_certificate'
-                      )
-                    "
-                  /><v-icon icon="mdi-cloud-upload-outline" size="22" /><b
-                    >Choose a file or drop it here</b
-                  ><small>Private and encrypted · Up to 5 MB</small></label
+                          ? 'image/jpeg,image/png,image/webp'
+                          : 'application/pdf,image/jpeg,image/png'
+                      "
+                      @change="
+                        uploadProfileDocument(
+                          $event,
+                          f.toLowerCase().includes('passport')
+                            ? 'passport'
+                            : 'education_certificate'
+                        )
+                      "
+                    /><v-icon icon="mdi-cloud-upload-outline" size="22" /><b
+                      >Choose a file or drop it here</b
+                    ><small>Private and encrypted · Up to 5 MB</small></label
+                  ><div v-else class="upload-area upload-disabled" aria-disabled="true">
+                    <v-icon icon="mdi-cloud-off-outline" size="22" />
+                    <b>Document uploads are temporarily unavailable</b>
+                    <small>Passport and certificate uploads will be enabled later.</small>
+                  </div></template
                 ><textarea
                   v-else-if="f.toLowerCase().includes('address')"
                   :value="profileData[f]"
