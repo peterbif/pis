@@ -1657,9 +1657,9 @@ async function signOut() {
                   v-model="signupPassword"
                   :type="showSignupPassword ? 'text' : 'password'"
                   autocomplete="new-password"
-                  minlength="12"
+                  minlength="8"
                   required
-                  placeholder="12+ characters, letters, number and symbol"
+                  placeholder="8+ characters, letters, number and symbol"
                 /><button
                   class="password-toggle"
                   type="button"
