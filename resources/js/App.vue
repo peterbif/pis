@@ -2435,7 +2435,7 @@ async function signOut() {
                   >
                     <path d="M4 7h16M9 7V4h6v3m-9 0 1 13h10l1-13M10 11v5m4-5v5" />
                   </svg>
-                  {{ clearingProfileSection ? "Clearing…" : "Clear section" }}
+                  {{ clearingProfileSection ? "Clearing…" : "Delete section" }}
                 </button>
                 <span class="required-note"><i>*</i> Required</span>
               </div>
