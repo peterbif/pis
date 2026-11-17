@@ -2611,7 +2611,7 @@ async function signOut() {
                 <v-icon icon="mdi-information-outline" size="15" /> You can add
                 as many education records as apply to you.
               </p>
-              <section class="olevel-panel">
+              <section class="olevel-panel"  v-if="isJuniorStaff">
                 <div class="olevel-panel-heading">
                   <div>
                     <span class="form-kicker"
