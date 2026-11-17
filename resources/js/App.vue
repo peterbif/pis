@@ -2427,7 +2427,14 @@ async function signOut() {
                   "
                   @click="clearProfileSection(sections[profileTab])"
                 >
-                  <v-icon icon="mdi-delete-outline" size="16" />
+                  <svg
+                    class="clear-section-icon"
+                    viewBox="0 0 24 24"
+                    aria-hidden="true"
+                    focusable="false"
+                  >
+                    <path d="M4 7h16M9 7V4h6v3m-9 0 1 13h10l1-13M10 11v5m4-5v5" />
+                  </svg>
                   {{ clearingProfileSection ? "Clearing…" : "Clear section" }}
                 </button>
                 <span class="required-note"><i>*</i> Required</span>
@@ -2611,7 +2618,7 @@ async function signOut() {
                 <v-icon icon="mdi-information-outline" size="15" /> You can add
                 as many education records as apply to you.
               </p>
-              <section class="olevel-panel"  v-if="isJuniorStaff">
+              <section class="olevel-panel">
                 <div class="olevel-panel-heading">
                   <div>
                     <span class="form-kicker"
