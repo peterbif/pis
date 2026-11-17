@@ -20,7 +20,7 @@ export const usePersonnelStore = defineStore('personnel', {
     async login(payload) { await this.csrf(); const r = await axios.post('/api/login', payload); this.user = r.data.user; return r.data; },
     async logout() { try { await this.csrf(); await axios.post('/api/logout'); } finally { this.user = null; } },
     async saveProfile(payload) { return (await axios.put('/api/personnel/profile', payload)).data; },
+    async clearProfileSection(section) { return (await axios.put('/api/personnel/profile', { clear_section: section })).data; },
     async fetchProfile() { return (await axios.get('/api/personnel/profile')).data; },
-    async uploadDocument(category, file, educationIndex = null) { const body = new FormData(); body.append('category', category); body.append('file', file); if (educationIndex !== null) body.append('education_index', educationIndex); return (await axios.post('/api/personnel/documents', body)).data; },
   },
 });

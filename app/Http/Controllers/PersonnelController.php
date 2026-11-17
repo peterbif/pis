@@ -3,11 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Models\Lookup;
-use App\Models\PersonnelDocument;
-use App\Models\PersonnelProfile;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\{Crypt, Storage};
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\{Rule, ValidationException};
 
 class PersonnelController
@@ -33,6 +31,16 @@ class PersonnelController
         'next_of_kin_relationship',
     ];
 
+    private const CLEARABLE_PROFILE_SECTIONS = [
+        'appointment' => ['File number', 'IPPIS number', 'Date of first appointment', 'PFA name', 'Pension PIN', 'Salary structure', 'Special categorization', 'Level', 'Step', 'Department', 'Designation'],
+        'personal-details' => ['Title', 'Surname', 'First name', 'Other names', 'Maiden name', 'Gender', 'Date of birth', 'Marital status', 'Religion'],
+        'contact-address' => ['Phone number', 'Residential address', 'City / town', 'State of residence', 'LGA of residence', 'Permanent address', 'State of origin', 'LGA of origin', 'Senatorial district'],
+        'next-of-kin' => ['Next of kin surname', 'Next of kin first name', 'Next of kin relationship', 'Next of kin email', 'Next of kin phone number'],
+        'job-categorization' => ['job_categories'],
+        'education' => ['education', 'olevel_results'],
+        'bank-details' => ['Bank name', 'Account name', 'Account number'],
+    ];
+
     public function addLookupOption(Request $request)
     {
         $values = $request->validate([
@@ -40,8 +48,14 @@ class PersonnelController
             'label' => 'required|string|max:120',
             'parent' => [Rule::requiredIf(fn() => $request->input('category') === 'local_government'), 'nullable', 'string', 'max:120', Rule::in(Lookup::where('category', 'state')->where('active', true)->pluck('label')->all())],
         ]);
+        $label = trim($values['label']);
+        $label = preg_replace_callback(
+            '/(^|[^\p{L}\p{N}])(\p{L})/u',
+            fn($matches) => $matches[1] . Str::upper($matches[2]),
+            $label,
+        ) ?? $label;
         $option = Lookup::firstOrCreate(
-            ['category' => $values['category'], 'label' => trim($values['label']), 'parent' => $values['parent'] ?? null],
+            ['category' => $values['category'], 'label' => $label, 'parent' => $values['parent'] ?? null],
             ['active' => true, 'sort_order' => (int) Lookup::where('category', $values['category'])->max('sort_order') + 1],
         );
         if (!$option->active) $option->update(['active' => true]);
@@ -56,11 +70,22 @@ class PersonnelController
         $data['Date of first appointment'] = $profile->date_of_first_appointment?->format('Y-m-d')
             ?? ($data['Date of first appointment'] ?? null);
         $profile->setAttribute('data', $data);
-        return response()->json(['profile' => $profile, 'documents' => $request->user()->documents()->latest()->get()]);
+        return response()->json(['profile' => $profile]);
     }
 
     public function update(Request $request)
     {
+        if ($request->exists('clear_section')) {
+            $section = $request->input('clear_section');
+            if (!is_string($section) || $section === '') {
+                throw ValidationException::withMessages([
+                    'section' => ['Choose a valid personnel profile section to clear.'],
+                ]);
+            }
+
+            return $this->clearSection($request, $section);
+        }
+
         $profile = $request->user()->profile()->firstOrCreate(['user_id' => $request->user()->id]);
         $rules = [
             'data' => 'required|array|max:100',
@@ -149,31 +174,16 @@ class PersonnelController
         $isJuniorStaff = collect(is_array($jobCategories) ? $jobCategories : [])
             ->contains(fn($category) => str_starts_with(strtolower(trim((string) $category)), 'junior staff'));
         $submittedOlevelResults = collect($values['data']['olevel_results'] ?? []);
-        $hasOlevelData = $submittedOlevelResults->contains(
-            fn($exam) =>
-            filled($exam['exam_year'] ?? null)
-                || filled($exam['exam_type'] ?? null)
-                || collect($exam['subjects'] ?? [])->contains(
-                    fn($subject) =>
-                    filled($subject['subject'] ?? null) || filled($subject['grade'] ?? null)
-                )
-        );
-        if (!$isJuniorStaff && $hasOlevelData) {
-            throw ValidationException::withMessages([
-                'data.olevel_results' => ['O’Level results may only be entered for personnel categorized as Junior staff.'],
-            ]);
-        } {
-            $examResults = $isJuniorStaff
-                ? $submittedOlevelResults->filter(
-                    fn($exam) =>
-                    filled($exam['exam_year'] ?? null)
-                        || filled($exam['exam_type'] ?? null)
-                        || collect($exam['subjects'] ?? [])->contains(
-                            fn($subject) =>
-                            filled($subject['subject'] ?? null) || filled($subject['grade'] ?? null)
-                        )
-                )->values()
-                : collect();
+        if ($isJuniorStaff) {
+            $examResults = $submittedOlevelResults->filter(
+                fn($exam) =>
+                filled($exam['exam_year'] ?? null)
+                    || filled($exam['exam_type'] ?? null)
+                    || collect($exam['subjects'] ?? [])->contains(
+                        fn($subject) =>
+                        filled($subject['subject'] ?? null) || filled($subject['grade'] ?? null)
+                    )
+            )->values();
             $educationForRule = $values['data']['education'] ?? ($profile->data['education'] ?? []);
             $isNursingSchool = collect($educationForRule)->contains(fn($row) => str_contains(strtolower($row['institution'] ?? ''), 'school of nursing'));
             if ($isNursingSchool && $examResults->count() > 1) {
@@ -199,9 +209,9 @@ class PersonnelController
         }
         $data = array_replace_recursive($profile->data ?? [], $values['data']);
         if (array_key_exists('education', $values['data'])) $data['education'] = $values['data']['education'];
+        if (array_key_exists('job_categories', $values['data'])) $data['job_categories'] = $values['data']['job_categories'];
         $olevelResultsToSave = $values['data']['olevel_results'] ?? ($profile->data['olevel_results'] ?? []);
-        $data['olevel_results'] = $isJuniorStaff
-            ? collect($olevelResultsToSave)
+        $data['olevel_results'] = collect($olevelResultsToSave)
             ->filter(
                 fn($exam) =>
                 filled($exam['exam_year'] ?? null)
@@ -217,64 +227,97 @@ class PersonnelController
                     ->filter(fn($subject) => filled($subject['subject'] ?? null) || filled($subject['grade'] ?? null))
                     ->values()->all();
                 return $exam;
-            })->values()->all()
-            : [];
-        $requiredFields = ['Title', 'Surname', 'First name', 'Gender', 'Date of birth', 'Email', 'Phone number', 'File number', 'IPPIS number', 'Date of first appointment', 'Department', 'Designation', 'Salary structure', 'Level', 'Step'];
-        $profileReadyForReview = collect($requiredFields)->every(fn($field) => isset($data[$field]) && trim((string) $data[$field]) !== '');
+            })->values()->all();
+        $profileReadyForReview = $this->profileReadyForReview($data);
         $profile->update([
             'data' => $data,
             'date_of_first_appointment' => $data['Date of first appointment'] ?? null,
-            'file_number' => $data['File number'] ?? $profile->file_number,
-            'ippis_number' => $data['IPPIS number'] ?? $profile->ippis_number,
-            'surname' => $data['Surname'] ?? $profile->surname,
-            'first_name' => $data['First name'] ?? $profile->first_name,
+            'file_number' => array_key_exists('File number', $data) ? $data['File number'] : $profile->file_number,
+            'ippis_number' => array_key_exists('IPPIS number', $data) ? $data['IPPIS number'] : $profile->ippis_number,
+            'surname' => array_key_exists('Surname', $data) ? $data['Surname'] : $profile->surname,
+            'first_name' => array_key_exists('First name', $data) ? $data['First name'] : $profile->first_name,
             'status' => $profileReadyForReview ? 'in_review' : 'incomplete',
         ]);
-        if (!empty($data['Surname']) || !empty($data['First name'])) {
-            $request->user()->update(['name' => trim(($data['First name'] ?? '') . ' ' . ($data['Surname'] ?? ''))]);
+        if (array_key_exists('Surname', $data) || array_key_exists('First name', $data)) {
+            $displayName = trim(($data['First name'] ?? '') . ' ' . ($data['Surname'] ?? ''));
+            $request->user()->update(['name' => $displayName !== '' ? $displayName : $request->user()->email]);
         }
         return response()->json(['profile' => $profile->fresh(), 'message' => 'Your profile has been saved.']);
     }
 
-    public function upload(Request $request)
+    public function clearSection(Request $request, string $section)
     {
-        $values = $request->validate([
-            'category' => 'required|in:passport,education_certificate',
-            'file' => 'required|file|max:5120',
-            'education_index' => 'required_if:category,education_certificate|nullable|integer|min:0|max:29',
+        $fields = self::CLEARABLE_PROFILE_SECTIONS[$section] ?? null;
+        if (!$fields) {
+            throw ValidationException::withMessages([
+                'section' => ['Choose a valid personnel profile section to clear.'],
+            ]);
+        }
+
+        $user = $request->user();
+        $profile = $user->profile()->firstOrCreate(['user_id' => $user->id]);
+        $data = $profile->data ?? [];
+        foreach ($fields as $field) unset($data[$field]);
+        $data['Email'] = $data['Email'] ?? $user->email;
+
+        DB::transaction(function () use ($profile, $user, $section, $data) {
+            $profile->update([
+                'data' => $data,
+                'date_of_first_appointment' => $data['Date of first appointment'] ?? null,
+                'file_number' => $data['File number'] ?? null,
+                'ippis_number' => $data['IPPIS number'] ?? null,
+                'surname' => $data['Surname'] ?? null,
+                'first_name' => $data['First name'] ?? null,
+                'status' => $this->profileReadyForReview($data) ? 'in_review' : 'incomplete',
+            ]);
+
+            if ($section === 'personal-details') {
+                $user->update(['name' => $user->email]);
+            }
+        });
+
+        return response()->json([
+            'profile' => $profile->fresh(),
+            'message' => 'The profile section was cleared.',
         ]);
-        $allowedMimes = $values['category'] === 'passport' ? 'image/jpeg,image/png,image/webp' : 'application/pdf,image/jpeg,image/png';
-        abort_unless(in_array($values['file']->getMimeType(), explode(',', $allowedMimes), true), 422, 'This file type is not supported for that document.');
-        $file = $values['file'];
-        $path = 'personnel-documents/' . $request->user()->id . '/' . Str::uuid() . '.enc';
-        $stored = Storage::disk('local')->put($path, Crypt::encryptString(file_get_contents($file->getRealPath())));
-        abort_unless($stored, 503, 'We could not safely store your document right now. Please try again later.');
-        $document = $request->user()->documents()->create([
-            'category' => $values['category'],
-            'education_index' => $values['category'] === 'education_certificate' ? ($values['education_index'] ?? null) : null,
-            'original_name' => Str::limit(basename($file->getClientOriginalName()), 180, ''),
-            'mime_type' => $file->getMimeType(),
-            'size_bytes' => $file->getSize(),
-            'storage_path' => $path,
-        ]);
-        return response()->json(['document' => $document, 'message' => 'Your document has been uploaded securely.'], 201);
     }
 
-    public function download(Request $request, PersonnelDocument $document)
+    private function profileReadyForReview(array $data): bool
     {
-        $isOwner = $document->user_id === $request->user()->id;
-        $isHrAdmin = in_array($request->user()->role, ['admin', 'superadmin'], true)
-            && $request->user()->hasPermission('view_personnel');
-        abort_unless($isOwner || $isHrAdmin, 404);
-        abort_unless(Storage::disk('local')->exists($document->storage_path), 404);
-        $contents = Crypt::decryptString(Storage::disk('local')->get($document->storage_path));
-        $filename = rawurlencode(Str::ascii($document->original_name));
-        return response($contents, 200, [
-            'Content-Type' => $document->mime_type,
-            'Content-Disposition' => "attachment; filename*=UTF-8''{$filename}",
-            'Content-Length' => (string) strlen($contents),
-            'X-Content-Type-Options' => 'nosniff',
-            'Cache-Control' => 'private, no-store, max-age=0',
-        ]);
+        $requiredFields = ['Title', 'Surname', 'First name', 'Gender', 'Date of birth', 'Email', 'Phone number', 'File number', 'IPPIS number', 'Date of first appointment', 'Department', 'Designation', 'Salary structure', 'Level', 'Step'];
+        $isJuniorStaff = collect(is_array($data['job_categories'] ?? null) ? $data['job_categories'] : [])
+            ->contains(fn($category) => str_starts_with(strtolower(trim((string) $category)), 'junior staff'));
+        $hasCompleteOlevelResult = false;
+        $olevelResults = is_array($data['olevel_results'] ?? null)
+            ? $data['olevel_results']
+            : [];
+
+        foreach ($olevelResults as $exam) {
+            if (
+                !is_array($exam)
+                || !filled($exam['exam_year'] ?? null)
+                || !filled($exam['exam_type'] ?? null)
+                || !filled($exam['sitting'] ?? null)
+            ) {
+                continue;
+            }
+
+            $subjects = is_array($exam['subjects'] ?? null)
+                ? $exam['subjects']
+                : [];
+            foreach ($subjects as $subject) {
+                if (
+                    is_array($subject)
+                    && filled($subject['subject'] ?? null)
+                    && filled($subject['grade'] ?? null)
+                ) {
+                    $hasCompleteOlevelResult = true;
+                    break 2;
+                }
+            }
+        }
+
+        return collect($requiredFields)->every(fn($field) => isset($data[$field]) && trim((string) $data[$field]) !== '')
+            && (!$isJuniorStaff || $hasCompleteOlevelResult);
     }
 }

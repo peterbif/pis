@@ -12,7 +12,6 @@ import Swal from "sweetalert2";
 import { usePersonnelStore } from "./stores/personnel";
 const store = usePersonnelStore();
 const logoAsset = "/images/uch-logo.png";
-const documentUploadsEnabled = false;
 const nav = ref("Overview"),
   profileTab = ref(0),
   search = ref(""),
@@ -61,6 +60,7 @@ watch(showOptions, (value) => {
 });
 const profileData = ref({}),
   profileStatus = ref("incomplete");
+const clearingProfileSection = ref(false);
 const educationDrafts = ref([{}]);
 const olevelDrafts = ref([]);
 const isJuniorStaff = computed(() =>
@@ -96,7 +96,6 @@ const hasCompleteOlevelResult = computed(() =>
       )
   )
 );
-const passportPrintUrl = ref("");
 const printableSections = computed(() =>
   sections
     .map((section) => ({
@@ -309,18 +308,12 @@ const sections = [
       "Course",
       "Qualification",
       "Year of graduation",
-      "Certificate upload",
     ],
   },
   {
     title: "Bank details",
     icon: "mdi-bank-outline",
     fields: ["Bank name", "Account name", "Account number"],
-  },
-  {
-    title: "Documents",
-    icon: "mdi-file-image-outline",
-    fields: ["Passport photograph"],
   },
 ];
 const configurableCategories = [
@@ -345,7 +338,6 @@ const configurableCategories = [
 ];
 const stats = ref([]),
   people = ref([]),
-  profileDocuments = ref([]),
   dashboardTotal = ref(0),
   pendingReview = ref(0),
   incompleteCount = ref(0),
@@ -639,17 +631,18 @@ async function startAddDropdown(field, educationIndex = null) {
   await savePersonnelDropdownOption(field, educationIndex);
 }
 async function savePersonnelDropdownOption(field, educationIndex = null) {
-  const label = newDropdownOption.value.trim();
-  if (!label) return;
+  const enteredLabel = newDropdownOption.value.trim();
+  if (!enteredLabel) return;
   dropdownOptionBusy.value = true;
   try {
     const parentField = dependentStateField(field);
     const parent = parentField ? profileData.value[parentField] : null;
-    await axios.post("/api/lookups", {
+    const { data } = await axios.post("/api/lookups", {
       category: lookupKey(field),
-      label,
+      label: enteredLabel,
       ...(parent ? { parent } : {}),
     });
+    const label = data.option?.label || enteredLabel;
     await store.loadLookups();
     if (field === "Select every category that applies") {
       profileData.value.job_categories = [
@@ -854,7 +847,7 @@ async function loadDashboard() {
 }
 async function loadOwnProfile() {
   try {
-    const { profile, documents } = await store.fetchProfile();
+    const { profile } = await store.fetchProfile();
     profileStatus.value = profile?.status || "incomplete";
     profileData.value = profile?.data || {};
     if (!profileData.value.Email)
@@ -876,8 +869,6 @@ async function loadOwnProfile() {
         sitting: exam.sitting || "1st",
         subjects: exam.subjects?.length ? exam.subjects : [{}],
       }));
-    profileDocuments.value = documents || [];
-    await loadPassportPhoto();
   } catch {
     notify("Could not load your personnel profile.");
   }
@@ -913,7 +904,6 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   if (chatRefreshTimer) window.clearInterval(chatRefreshTimer);
   if (activeChatChannel && window.Echo) window.Echo.leave(activeChatChannel);
-  if (passportPrintUrl.value) URL.revokeObjectURL(passportPrintUrl.value);
   window.removeEventListener("pis-reverb-connected", onChatSocketConnected);
   window.removeEventListener("pis-reverb-connecting", onChatSocketConnecting);
   window.removeEventListener(
@@ -967,6 +957,7 @@ function addEducation() {
 }
 function removeEducation(index) {
   if (educationDrafts.value.length > 1) educationDrafts.value.splice(index, 1);
+  else educationDrafts.value = [{}];
 }
 function addOlevelSitting() {
   if (canAddOlevelSitting.value)
@@ -1008,61 +999,97 @@ function profilePayload() {
       })),
   };
 }
-async function uploadProfileDocument(event, category, index = null) {
-  const file = event.target.files?.[0];
-  if (!file) return;
-  if (!documentUploadsEnabled) {
-    notify("Document uploads are temporarily unavailable.", "info");
-    event.target.value = "";
+function goToProfileSection(index) {
+  profileTab.value = Math.min(Math.max(index, 0), sections.length - 1);
+  nextTick(() => {
+    document
+      .querySelector(".profile-side .step-item.selected")
+      ?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+    document
+      .querySelector(".profile-form")
+      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+}
+function profileSectionHasData(section) {
+  if (section.title === "Education")
+    return (
+      educationDrafts.value.some((row) =>
+        Object.values(row || {}).some((value) => String(value || "").trim())
+      ) || olevelDrafts.value.length > 0
+    );
+  if (section.title === "Job categorization")
+    return (profileData.value.job_categories || []).length > 0;
+  return section.fields
+    .filter((field) => field !== "Email")
+    .some((field) => String(profileData.value[field] || "").trim());
+}
+async function clearProfileSection(section) {
+  if (
+    !section ||
+    clearingProfileSection.value ||
+    !profileSectionHasData(section)
+  )
     return;
+  const sectionKey = {
+    Appointment: "appointment",
+    "Personal details": "personal-details",
+    "Contact & address": "contact-address",
+    "Next of kin": "next-of-kin",
+    "Job categorization": "job-categorization",
+    Education: "education",
+    "Bank details": "bank-details",
+  }[section.title];
+  if (!sectionKey) return;
+  const confirmation = await confirmAction({
+    title: `Clear ${section.title}?`,
+    text: "This removes the saved and current entries here. Required details may need to be added again before you can submit your profile.",
+    confirmButtonText: "Clear and save",
+  });
+  if (!confirmation.isConfirmed) return;
+
+  const previousState = {
+    profileData: JSON.parse(JSON.stringify(profileData.value)),
+    education: educationDrafts.value.map((row) => ({ ...row })),
+    olevel: olevelDrafts.value.map((exam) => ({
+      ...exam,
+      subjects: (exam.subjects || []).map((subject) => ({ ...subject })),
+    })),
+    status: profileStatus.value,
+  };
+
+  if (section.title === "Education") {
+    educationDrafts.value = [{}];
+    olevelDrafts.value = [];
+  } else if (section.title === "Job categorization") {
+    profileData.value.job_categories = [];
+  } else {
+    for (const field of section.fields) {
+      profileData.value[field] =
+        field === "Email" ? store.user?.email || "" : "";
+    }
   }
+
+  clearingProfileSection.value = true;
   try {
-    const { document } = await store.uploadDocument(category, file, index);
-    profileDocuments.value.unshift(document);
-    if (category === "passport") await loadPassportPhoto();
-    notify("Your document has been stored securely.");
-  } catch (e) {
-    notify(humanError(e, "We could not upload that document."));
+    const result = await store.clearProfileSection(sectionKey);
+    profileStatus.value = result.profile.status;
+    profileData.value = {
+      ...(result.profile.data || {}),
+      Email: result.profile.data?.Email || store.user?.email || "",
+    };
+    notify(
+      section.title === "Education" && isJuniorStaff.value
+        ? "Education and O’Level entries were cleared. Junior Staff will need a complete O’Level result before submitting."
+        : `${section.title} entries were cleared and saved.`
+    );
+  } catch (error) {
+    profileData.value = previousState.profileData;
+    educationDrafts.value = previousState.education;
+    olevelDrafts.value = previousState.olevel;
+    profileStatus.value = previousState.status;
+    notify(humanError(error, `Could not clear ${section.title}.`), "error");
   } finally {
-    event.target.value = "";
-  }
-}
-async function loadPassportPhoto() {
-  const passport = profileDocuments.value.find(
-    (document) => document.category === "passport"
-  );
-  if (!passport) {
-    if (passportPrintUrl.value) URL.revokeObjectURL(passportPrintUrl.value);
-    passportPrintUrl.value = "";
-    return false;
-  }
-  try {
-    const response = await axios.get(
-      `/api/personnel/documents/${passport.id}`,
-      { responseType: "blob" }
-    );
-    const previousUrl = passportPrintUrl.value;
-    passportPrintUrl.value = URL.createObjectURL(response.data);
-    if (previousUrl) URL.revokeObjectURL(previousUrl);
-    return true;
-  } catch {
-    return false;
-  }
-}
-async function downloadDocument(fileRecord) {
-  try {
-    const { data } = await axios.get(
-      `/api/personnel/documents/${fileRecord.id}`,
-      { responseType: "blob" }
-    );
-    const url = URL.createObjectURL(data);
-    const link = window.document.createElement("a");
-    link.href = url;
-    link.download = fileRecord.original_name;
-    link.click();
-    URL.revokeObjectURL(url);
-  } catch {
-    notify("Could not open this private document.");
+    clearingProfileSection.value = false;
   }
 }
 async function saveProfile(advance = false) {
@@ -1100,7 +1127,7 @@ async function saveProfile(advance = false) {
       return;
     }
     if (advance && profileTab.value < sections.length - 1) {
-      profileTab.value++;
+      goToProfileSection(profileTab.value + 1);
       notify("Your profile has been saved.");
     } else if (advance && result.profile.status === "in_review") {
       notify("Your profile has been submitted for review.");
@@ -1125,15 +1152,6 @@ async function printPersonnelProfile() {
     const result = await store.saveProfile({ data });
     profileStatus.value = result.profile.status;
     profileData.value = result.profile.data || data;
-    const hasPassport = profileDocuments.value.some(
-      (document) => document.category === "passport"
-    );
-    const passportLoaded = await loadPassportPhoto();
-    if (hasPassport && !passportLoaded)
-      notify(
-        "Your profile will print, but the saved passport photograph could not be loaded.",
-        "warning"
-      );
     await nextTick();
     window.print();
   } catch (e) {
@@ -1957,20 +1975,14 @@ async function signOut() {
         </div>
         <div class="user-row">
           <div class="user-avatar">
-            <img
-              v-if="passportPrintUrl"
-              class="account-avatar-photo"
-              :src="passportPrintUrl"
-              alt="Personnel passport photograph"
-            />
-            <template v-else>{{
+            {{
               (store.user?.name || "UC")
                 .split(" ")
                 .map((part) => part[0])
                 .join("")
                 .slice(0, 2)
                 .toUpperCase()
-            }}</template>
+            }}
           </div>
           <div class="user-copy">
             <b>{{ store.user?.name || "UCH colleague" }}</b
@@ -2025,20 +2037,14 @@ async function signOut() {
             <v-icon icon="mdi-bell-outline" /><i></i>
           </button>
           <div class="tiny-avatar">
-            <img
-              v-if="passportPrintUrl"
-              class="account-avatar-photo"
-              :src="passportPrintUrl"
-              alt="Personnel passport photograph"
-            />
-            <template v-else>{{
+            {{
               (store.user?.name || "UC")
                 .split(" ")
                 .map((part) => part[0])
                 .join("")
                 .slice(0, 2)
                 .toUpperCase()
-            }}</template>
+            }}
           </div>
         </div>
       </header>
@@ -2359,34 +2365,30 @@ async function signOut() {
           </div>
         </div>
         <div class="profile-layout">
-          <div class="profile-side">
+          <nav class="profile-side" aria-label="Personnel profile sections">
             <div class="profile-person">
               <div class="profile-photo">
-                <img
-                  v-if="passportPrintUrl"
-                  class="profile-photo-image"
-                  :src="passportPrintUrl"
-                  alt="Your passport photograph"
-                />
-                <template v-else>{{
+                {{
                     (store.user?.name || "UC")
                       .split(" ")
                       .map((part) => part[0])
                       .join("")
                       .slice(0, 2)
                       .toUpperCase()
-                  }}</template
-                ><span><v-icon icon="mdi-camera" size="16" /></span>
+                  }}
               </div>
               <b>{{ store.user?.name || store.user?.email }}</b
               ><small>UCH personnel account</small>
             </div>
-            <div
+            <!-- <div style="margin-left: 5px !important">Jump to a section</div> -->
+            <button
               v-for="(s, i) in sections"
               :key="s.title"
+              type="button"
               class="step-item"
               :class="{ selected: profileTab === i }"
-              @click="profileTab = i"
+              :aria-current="profileTab === i ? 'step' : undefined"
+              @click="goToProfileSection(i)"
             >
               <span class="step-icon"><v-icon :icon="s.icon" size="17" /></span
               ><span>{{ s.title }}</span
@@ -2396,26 +2398,40 @@ async function signOut() {
                 class="step-check"
                 size="16"
               />
-            </div>
+            </button>
             <div class="side-hint">
               <v-icon icon="mdi-lock-outline" size="15" /> Only authorised HR
               staff can view your details.
             </div>
-          </div>
+          </nav>
           <div class="profile-form">
             <div class="form-head">
               <div>
                 <span class="form-kicker"
                   >SECTION {{ String(profileTab + 1).padStart(2, "0") }} OF
-                  08</span
+                  {{ String(sections.length).padStart(2, "0") }}</span
                 >
                 <h2>{{ sections[profileTab].title }}</h2>
                 <p>
-                  Share the details that apply to you. You can save and come
+                  Select & fill the details that apply to you. You can save and come
                   back at any time.
                 </p>
               </div>
-              <span class="required-note"><i>*</i> Required</span>
+              <div class="form-head-actions">
+                <button
+                  type="button"
+                  class="clear-section-button"
+                  :disabled="
+                    clearingProfileSection ||
+                    !profileSectionHasData(sections[profileTab])
+                  "
+                  @click="clearProfileSection(sections[profileTab])"
+                >
+                  <v-icon icon="mdi-delete-outline" size="16" />
+                  {{ clearingProfileSection ? "Clearing…" : "Clear section" }}
+                </button>
+                <span class="required-note"><i>*</i> Required</span>
+              </div>
             </div>
             <div
               v-if="sections[profileTab].title === 'Job categorization'"
@@ -2492,7 +2508,10 @@ async function signOut() {
                     >
                   </div>
                   <button
-                    v-if="educationDrafts.length > 1"
+                    v-if="
+                      educationDrafts.length > 1 ||
+                      Object.values(education || {}).some(Boolean)
+                    "
                     class="remove-education"
                     @click="removeEducation(index)"
                   >
@@ -2584,41 +2603,6 @@ async function signOut() {
                     />
                   </div>
                 </div>
-                <label v-if="documentUploadsEnabled" class="certificate-upload"
-                  ><input
-                    type="file"
-                    accept="application/pdf,image/jpeg,image/png"
-                    @change="
-                      uploadProfileDocument(
-                        $event,
-                        'education_certificate',
-                        index
-                      )
-                    "
-                  /><v-icon icon="mdi-paperclip" size="16" /> Attach certificate
-                  <small>PDF, JPG or PNG · Max 5 MB</small></label
-                ><div
-                  v-else
-                  class="certificate-upload upload-disabled"
-                  aria-disabled="true"
-                >
-                  <v-icon icon="mdi-cloud-off-outline" size="16" />
-                  Certificate uploads are temporarily unavailable.
-                </div
-                ><button
-                  v-for="doc in profileDocuments.filter(
-                    (d) =>
-                      d.category === 'education_certificate' &&
-                      d.education_index === index
-                  )"
-                  :key="doc.id"
-                  class="private-document-link"
-                  @click="downloadDocument(doc)"
-                >
-                  <v-icon icon="mdi-file-lock-outline" size="16" />
-                  {{ doc.original_name }}
-                  <v-icon icon="mdi-download" size="15" />
-                </button>
               </article>
               <button class="add-education" @click="addEducation">
                 <v-icon icon="mdi-plus" size="17" /> Add another qualification
@@ -2635,13 +2619,13 @@ async function signOut() {
                     >
                     <h3>O’Level result(s)</h3>
                     <p v-if="isJuniorStaff">
-                      Required for Junior Staff. Enter at least one complete
+                      Compulsory for Junior Staff. Enter at least one complete
                       result with an exam year, exam body, sitting, and a
                       subject with its grade.
                     </p>
                     <p v-else>
-                      Optional for your selected job category. Add your O’Level
-                      results if they apply to you.
+                      Optional for Senior Staff. You may save complete or partial
+                      O’Level details without making them a submission requirement.
                     </p>
                   </div>
                   <span class="olevel-limit-pill">{{
@@ -2667,7 +2651,7 @@ async function signOut() {
                       >
                     </div>
                     <button
-                      v-if="olevelDrafts.length > 1"
+                      v-if="olevelDrafts.length > 0"
                       type="button"
                       class="remove-education"
                       @click="removeOlevelSitting(examIndex)"
@@ -2822,8 +2806,7 @@ async function signOut() {
                   other Junior Staff may enter up to two sittings per exam body.
                 </p>
                 <p v-else class="olevel-rule-note">
-                  You may leave this section empty or submit it with partial
-                  details; O’Level completion is not required for your category.
+                  You may save partial details or leave this section empty.
                 </p>
               </section>
             </div>
@@ -2834,20 +2817,13 @@ async function signOut() {
                 :class="{
                   'field-wide':
                     f.includes('address') ||
-                    f.includes('upload') ||
-                    f.toLowerCase().includes('passport') ||
                     f === 'Permanent address',
                 }"
               >
                 <label
                   >{{ f }}
                   <i
-                    v-if="
-                      (j < 2 &&
-                        !f.toLowerCase().includes('upload') &&
-                        !f.toLowerCase().includes('passport')) ||
-                      f === 'Date of first appointment'
-                    "
+                    v-if="j < 2 || f === 'Date of first appointment'"
                     >*</i
                   ></label
                 >
@@ -2883,35 +2859,7 @@ async function signOut() {
                     Can’t find an option? Add it
                   </button>
                 </template>
-                <template
-                  v-else-if="
-                    f.includes('upload') || f.toLowerCase().includes('passport')
-                  "
-                  ><label v-if="documentUploadsEnabled" class="upload-area secure-upload"
-                    ><input
-                      type="file"
-                      :accept="
-                        f.toLowerCase().includes('passport')
-                          ? 'image/jpeg,image/png,image/webp'
-                          : 'application/pdf,image/jpeg,image/png'
-                      "
-                      @change="
-                        uploadProfileDocument(
-                          $event,
-                          f.toLowerCase().includes('passport')
-                            ? 'passport'
-                            : 'education_certificate'
-                        )
-                      "
-                    /><v-icon icon="mdi-cloud-upload-outline" size="22" /><b
-                      >Choose a file or drop it here</b
-                    ><small>Private and encrypted · Up to 5 MB</small></label
-                  ><div v-else class="upload-area upload-disabled" aria-disabled="true">
-                    <v-icon icon="mdi-cloud-off-outline" size="22" />
-                    <b>Document uploads are temporarily unavailable</b>
-                    <small>Passport and certificate uploads will be enabled later.</small>
-                  </div></template
-                ><textarea
+                <textarea
                   v-else-if="f.toLowerCase().includes('address')"
                   :value="profileData[f]"
                   @input="profileData[f] = $event.target.value"
@@ -2938,7 +2886,7 @@ async function signOut() {
               <button
                 class="back-btn"
                 :disabled="profileTab === 0"
-                @click="profileTab = Math.max(0, profileTab - 1)"
+                @click="goToProfileSection(profileTab - 1)"
               >
                 <v-icon icon="mdi-arrow-left" size="17" /> Back
               </button>
@@ -2946,9 +2894,9 @@ async function signOut() {
                 <button class="save-btn" @click="saveProfile(false)">
                   Save for later</button
                 ><button class="primary-btn" @click="saveProfile(true)">
-                  {{ profileTab < 7 ? "Save & continue" : "Submit profile" }}
+                  {{ profileTab < sections.length - 1 ? "Save & continue" : "Submit profile" }}
                   <v-icon
-                    :icon="profileTab < 7 ? 'mdi-arrow-right' : 'mdi-check'"
+                    :icon="profileTab < sections.length - 1 ? 'mdi-arrow-right' : 'mdi-check'"
                     size="17"
                   />
                 </button>
@@ -3001,15 +2949,6 @@ async function signOut() {
                 <b>{{ profileData["IPPIS number"] || "—" }}</b></span
               >
             </div>
-            <img
-              v-if="passportPrintUrl"
-              class="print-passport-photo"
-              :src="passportPrintUrl"
-              alt="Personnel passport photograph"
-            />
-            <div v-else class="print-passport-placeholder">
-              PASSPORT<br />PHOTO
-            </div>
           </div>
           <section
             v-for="group in printableSections"
@@ -3030,26 +2969,6 @@ async function signOut() {
                 ><b>{{ row.value }}</b>
               </div>
             </div>
-          </section>
-          <section
-            v-if="profileDocuments.some((doc) => doc.category !== 'passport')"
-            class="print-attachments"
-          >
-            <h3>Secure attachments</h3>
-            <p>
-              Supporting documents remain securely stored and are not embedded
-              in this printout.
-            </p>
-            <ul>
-              <li
-                v-for="doc in profileDocuments.filter(
-                  (item) => item.category !== 'passport'
-                )"
-                :key="doc.id"
-              >
-                Education certificate · {{ doc.original_name }}
-              </li>
-            </ul>
           </section>
           <footer class="print-document-footer">
             <span

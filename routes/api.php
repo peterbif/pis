@@ -1,6 +1,6 @@
 <?php
 
-use App\Http\Controllers\{AdminController,AuthController,ChatController,PersonnelController};
+use App\Http\Controllers\{AdminController, AuthController, ChatController, PersonnelController};
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -12,15 +12,14 @@ Route::prefix('signup')->group(function () {
     Route::post('/verify', [AuthController::class, 'verify'])->middleware('throttle:10,1');
 });
 Route::middleware('auth:sanctum')->group(function () {
-    Route::get('/user', fn (Request $request) => $request->user()->only('id', 'name', 'email', 'role', 'permissions'));
+    Route::get('/user', fn(Request $request) => $request->user()->only('id', 'name', 'email', 'role', 'permissions'));
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/chat', [ChatController::class, 'index'])->middleware('throttle:60,1');
     Route::post('/chat/messages', [ChatController::class, 'send'])->middleware('throttle:20,1');
     Route::get('/personnel/profile', [PersonnelController::class, 'show']);
     Route::put('/personnel/profile', [PersonnelController::class, 'update']);
+    Route::delete('/personnel/profile/sections/{section}', [PersonnelController::class, 'clearSection']);
     Route::post('/lookups', [PersonnelController::class, 'addLookupOption'])->middleware('throttle:30,60');
-    Route::post('/personnel/documents', [PersonnelController::class, 'upload'])->middleware('throttle:20,60');
-    Route::get('/personnel/documents/{document}', [PersonnelController::class, 'download']);
     Route::middleware('role:admin,superadmin')->prefix('admin')->group(function () {
         Route::get('/dashboard', [AdminController::class, 'dashboard'])->middleware('permission:view_dashboard');
         Route::get('/personnel/export', [AdminController::class, 'export'])->middleware('permission:export_personnel');
