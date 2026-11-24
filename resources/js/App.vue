@@ -1765,7 +1765,7 @@ async function signOut() {
               </button>
 
              <router-link
-             to="/"
+             @click="returnToSignIn"
               class="back-to-login"
               aria-label="Return to login page"
               style="cursor: pointer;"
