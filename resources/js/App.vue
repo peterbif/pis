@@ -234,7 +234,18 @@ const authView = ref("signin"),
   authPassword = ref(""),
   authError = ref(""),
   authSuccess = ref(""),
-  authBusy = ref(false);
+  authBusy = ref(false),
+  resetStep = ref("email"),
+  resetEmail = ref(""),
+  resetCode = ref(""),
+  resetPassword = ref(""),
+  resetPasswordConfirm = ref(""),
+  showResetPassword = ref(false),
+  showResetPasswordConfirm = ref(false),
+  resetError = ref(""),
+  resetNotice = ref("");
+const resetPasswordsMatch = computed(() => resetPassword.value.length > 0 && resetPassword.value === resetPasswordConfirm.value);
+const resetPasswordValid = computed(() => /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,200}$/.test(resetPassword.value));
 const sections = [
   {
     title: "Appointment",
@@ -476,6 +487,42 @@ const swalClasses = {
   input: "pis-swal-input",
   actions: "pis-swal-actions",
 };
+function addSwalPasswordToggle(inputOverride = null) {
+  const input = inputOverride || Swal.getInput();
+  if (!input) return;
+
+  input.type = "password";
+  input.autocomplete = "new-password";
+  input.classList.add("pis-swal-password-input");
+
+  const inputParent = input.parentElement;
+  if (!inputParent) return;
+  if (inputParent.classList.contains("pis-swal-password-wrap")) return;
+
+  const wrapper = document.createElement("div");
+  wrapper.className = "pis-swal-password-wrap";
+  inputParent.insertBefore(wrapper, input);
+  wrapper.appendChild(input);
+
+  const toggle = document.createElement("button");
+  toggle.type = "button";
+  toggle.className = "pis-swal-password-toggle";
+  toggle.setAttribute("aria-label", "Show password");
+  toggle.setAttribute("aria-pressed", "false");
+  toggle.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M2.2 12s3.6-7 9.8-7 9.8 7 9.8 7-3.6 7-9.8 7-9.8-7-9.8-7Z"/><circle cx="12" cy="12" r="3"/></svg>';
+  toggle.addEventListener("click", () => {
+    const reveal = input.type === "password";
+    input.type = reveal ? "text" : "password";
+    toggle.setAttribute("aria-label", reveal ? "Hide password" : "Show password");
+    toggle.setAttribute("aria-pressed", String(reveal));
+    toggle.innerHTML = reveal
+      ? '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m3 3 18 18M10.6 5.2A10.9 10.9 0 0 1 12 5c6.2 0 9.8 7 9.8 7a16 16 0 0 1-3.2 4.1M6.2 6.2C3.6 8.1 2.2 12 2.2 12s3.6 7 9.8 7c1.2 0 2.3-.3 3.3-.7"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>'
+      : '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M2.2 12s3.6-7 9.8-7 9.8 7 9.8 7-3.6 7-9.8 7-9.8-7-9.8-7Z"/><circle cx="12" cy="12" r="3"/></svg>';
+    input.focus();
+  });
+  wrapper.appendChild(toggle);
+}
+
 function notify(message, type) {
   const icon =
     type ||
@@ -1456,6 +1503,65 @@ async function adminSignIn() {
     loginBusy.value = false;
   }
 }
+function openForgotPassword() {
+  resetStep.value = "email";
+  resetEmail.value = authEmail.value;
+  resetCode.value = "";
+  resetPassword.value = "";
+  resetPasswordConfirm.value = "";
+  resetError.value = "";
+  resetNotice.value = "";
+  authView.value = "forgot-password";
+}
+function returnToSignIn() {
+  authView.value = "signin";
+  resetError.value = "";
+  authError.value = "";
+}
+async function requestPasswordResetCode() {
+  resetError.value = "";
+  if (!resetEmail.value.trim()) { resetError.value = "Enter your email address."; return; }
+  authBusy.value = true;
+  try {
+    await store.csrf();
+    await axios.post("/api/password/forgot", { email: resetEmail.value.trim().toLowerCase() });
+    resetEmail.value = resetEmail.value.trim().toLowerCase();
+    resetStep.value = "code";
+    resetNotice.value = "If an account exists for this email, a six-digit code has been sent. The code expires in 10 minutes.";
+  } catch (e) {
+    resetError.value = humanError(e, "We could not send a reset code. Please try again.");
+  } finally { authBusy.value = false; }
+}
+function continuePasswordReset() {
+  resetError.value = "";
+  if (!/^\d{6}$/.test(resetCode.value)) { resetError.value = "Enter the six-digit code from your email."; return; }
+  resetStep.value = "password";
+}
+async function submitPasswordReset() {
+  resetError.value = "";
+  if (!resetPasswordValid.value) { resetError.value = "Use 8–200 characters with uppercase and lowercase letters, a number, and a symbol."; return; }
+  if (!resetPasswordsMatch.value) { resetError.value = "The passwords do not match."; return; }
+  authBusy.value = true;
+  try {
+    await store.csrf();
+    const response = await axios.post("/api/password/reset", {
+      email: resetEmail.value,
+      code: resetCode.value,
+      password: resetPassword.value,
+      password_confirmation: resetPasswordConfirm.value,
+    });
+    authEmail.value = resetEmail.value;
+    authPassword.value = "";
+    authSuccess.value = response.data.message || "Your password has been changed. Sign in using your new password.";
+    resetNotice.value = "Your password has been reset successfully. You can now sign in with your new password.";
+    resetStep.value = "complete";
+    resetPassword.value = "";
+    resetPasswordConfirm.value = "";
+  } catch (e) {
+    resetError.value = humanError(e, "We could not reset your password. Please request a new code and try again.");
+  } finally { authBusy.value = false; }
+}
+
 async function signIn() {
   authError.value = "";
   authSuccess.value = "";
@@ -1548,7 +1654,7 @@ async function signOut() {
           >
         </div>
         <div class="auth-card">
-          <div class="auth-tabs">
+          <div v-if="authView !== 'forgot-password'" class="auth-tabs">
             <button
               :class="{ selected: authView === 'signin' }"
               @click="
@@ -1568,6 +1674,47 @@ async function signOut() {
               Create account
             </button>
           </div>
+          <section v-if="authView === 'forgot-password'" class="auth-reset-page" aria-labelledby="reset-page-title">
+            <div class="auth-heading">
+              <span class="auth-overline">ACCOUNT RECOVERY</span>
+              <h2 id="reset-page-title">{{ resetStep === 'complete' ? 'Password updated' : 'Reset your password' }}</h2>
+              <p v-if="resetStep === 'email'">Enter the email address linked to your UCH personnel account.</p>
+              <p v-else-if="resetStep === 'code'">Enter the six-digit code sent to {{ resetEmail }}.</p>
+              <p v-else-if="resetStep === 'password'">Choose a strong password for your account.</p>
+              <p v-else>Your password has been changed successfully.</p>
+            </div>
+            <div v-if="resetNotice" class="auth-success" role="status"><v-icon icon="mdi-check-circle-outline" size="18" />{{ resetNotice }}</div>
+            <form v-if="resetStep === 'email'" class="auth-form" @submit.prevent="requestPasswordResetCode">
+              <label for="reset-email">Email address</label>
+              <div class="auth-input-wrap"><v-icon icon="mdi-email-outline" size="18" /><input id="reset-email" v-model="resetEmail" type="email" autocomplete="email" required placeholder="you@example.com" /></div>
+              <div v-if="resetError" class="auth-error" role="alert"><v-icon icon="mdi-alert-circle-outline" size="16" />{{ resetError }}</div>
+              <button class="auth-submit" type="submit" :disabled="authBusy"><span>{{ authBusy ? 'Sending code…' : 'Send reset code' }}</span><v-icon icon="mdi-arrow-right" size="18" /></button>
+            </form>
+            <form v-else-if="resetStep === 'code'" class="auth-form" @submit.prevent="continuePasswordReset">
+              <label for="reset-code">Six-digit verification code</label>
+              <div class="auth-input-wrap"><v-icon icon="mdi-numeric" size="18" /><input id="reset-code" v-model="resetCode" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" required placeholder="000000" /></div>
+              <div class="auth-note"><v-icon icon="mdi-clock-outline" size="16" /><span>Check your inbox. Your code expires in 10 minutes.</span></div>
+              <div v-if="resetError" class="auth-error" role="alert"><v-icon icon="mdi-alert-circle-outline" size="16" />{{ resetError }}</div>
+              <button class="auth-submit" type="submit"><span>Continue</span><v-icon icon="mdi-arrow-right" size="18" /></button>
+              <button class="auth-back" type="button" @click="resetStep = 'email'; resetError = ''">Change email address</button>
+            </form>
+            <form v-else-if="resetStep === 'password'" class="auth-form" @submit.prevent="submitPasswordReset">
+              <label for="reset-new-password">New password</label>
+              <div class="auth-input-wrap password-input-wrap"><v-icon icon="mdi-lock-outline" size="18" /><input id="reset-new-password" v-model="resetPassword" :type="showResetPassword ? 'text' : 'password'" autocomplete="new-password" required placeholder="Enter a new password" /><button class="password-toggle" type="button" :aria-label="showResetPassword ? 'Hide password' : 'Show password'" :aria-pressed="showResetPassword" @click="showResetPassword = !showResetPassword"><svg v-if="!showResetPassword" class="reset-eye-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M2.2 12s3.5-6.5 9.8-6.5 9.8 6.5 9.8 6.5-3.5 6.5-9.8 6.5S2.2 12 2.2 12Z"/><circle cx="12" cy="12" r="3"/></svg><svg v-else class="reset-eye-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3 3l18 18M10.6 5.7A10.8 10.8 0 0 1 12 5.5c6.3 0 9.8 6.5 9.8 6.5a16.7 16.7 0 0 1-3.1 3.8M6.2 6.2C3.6 8 2.2 12 2.2 12s3.5 6.5 9.8 6.5c1.2 0 2.3-.2 3.3-.6"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg></button></div>
+              <p class="auth-note">Use 8–200 characters with uppercase and lowercase letters, a number, and a symbol.</p>
+              <label for="reset-confirm-password">Confirm new password</label>
+              <div class="auth-input-wrap password-input-wrap"><v-icon icon="mdi-lock-check-outline" size="18" /><input id="reset-confirm-password" v-model="resetPasswordConfirm" :type="showResetPasswordConfirm ? 'text' : 'password'" autocomplete="new-password" required placeholder="Re-enter your new password" /><button class="password-toggle" type="button" :aria-label="showResetPasswordConfirm ? 'Hide password confirmation' : 'Show password confirmation'" :aria-pressed="showResetPasswordConfirm" @click="showResetPasswordConfirm = !showResetPasswordConfirm"><svg v-if="!showResetPasswordConfirm" class="reset-eye-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M2.2 12s3.5-6.5 9.8-6.5 9.8 6.5 9.8 6.5-3.5 6.5-9.8 6.5S2.2 12 2.2 12Z"/><circle cx="12" cy="12" r="3"/></svg><svg v-else class="reset-eye-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3 3l18 18M10.6 5.7A10.8 10.8 0 0 1 12 5.5c6.3 0 9.8 6.5 9.8 6.5a16.7 16.7 0 0 1-3.1 3.8M6.2 6.2C3.6 8 2.2 12 2.2 12s3.5 6.5 9.8 6.5c1.2 0 2.3-.2 3.3-.6"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg></button></div>
+              <p v-if="resetPasswordConfirm" class="reset-match-status" :class="resetPasswordsMatch ? 'is-match' : 'is-mismatch'" aria-live="polite">{{ resetPasswordsMatch ? 'Passwords match.' : 'Passwords do not match.' }}</p>
+              <div v-if="resetError" class="auth-error" role="alert"><v-icon icon="mdi-alert-circle-outline" size="16" />{{ resetError }}</div>
+              <button class="auth-submit" type="submit" :disabled="authBusy || !resetPasswordValid || !resetPasswordsMatch"><span>{{ authBusy ? 'Updating password…' : 'Reset password' }}</span><v-icon icon="mdi-check" size="18" /></button>
+            </form>
+            <div v-else-if="resetStep === 'complete'" class="auth-form">
+              <button class="auth-submit" type="button" @click="authView = 'signin'">
+                <span>Sign in with your new password</span>
+                <v-icon icon="mdi-arrow-right" size="18" />
+              </button>
+            </div>
+          </section>
           <template v-if="authView === 'signin'"
             ><div class="auth-heading">
               <span class="auth-overline">YOU ARE WELCOME HERE!</span>
@@ -1634,6 +1781,9 @@ async function signOut() {
                   </svg>
                 </button>
               </div>
+              <div class="auth-forgot-link">
+                <button type="button" :disabled="authBusy" @click="openForgotPassword">Forgot password?</button>
+              </div>
               <div class="auth-error" v-if="authError">
                 <v-icon icon="mdi-alert-circle-outline" size="16" />{{
                   authError
@@ -1658,7 +1808,7 @@ async function signOut() {
                <span class="text-lg-body-1"> Create your account</span>
                 <v-icon icon="mdi-arrow-up-right" size="15" />
               </button></div></template
-          ><template v-else
+          ><template v-else-if="authView === 'signup'"
             ><div class="auth-heading">
               <!-- <span class="auth-overline">YOUR UCH PERSONNEL RECORD</span> -->
               <h2>
@@ -2027,7 +2177,7 @@ async function signOut() {
                 stroke-linejoin="round"
               />
             </svg>
-            <span>Sign out</span>
+            <span style="color:crimson">Sign out</span>
           </button>
           <div class="secure-pill">
             <v-icon icon="mdi-shield-check-outline" size="16" /> Secure

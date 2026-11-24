@@ -6,6 +6,8 @@ use Illuminate\Support\Facades\Route;
 
 Route::get('/lookups', [AdminController::class, 'lookups']);
 Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:5,1');
+Route::post('/password/forgot', [AuthController::class, 'requestPasswordReset'])->middleware('throttle:3,10');
+Route::post('/password/reset', [AuthController::class, 'resetPassword'])->middleware('throttle:5,10');
 Route::prefix('signup')->group(function () {
     Route::post('/check-email', [AuthController::class, 'checkEmail'])->middleware('throttle:10,1');
     Route::post('/', [AuthController::class, 'signup'])->middleware('throttle:5,1');

@@ -4597,6 +4597,54 @@ table td {
     box-shadow: 0 0 0 3px rgba(8, 126, 75, .16) !important;
 }
 
+.pis-swal-password-wrap {
+    position: relative !important;
+    display: flex !important;
+    align-items: center !important;
+}
+
+.pis-swal-password-wrap .pis-swal-password-input {
+    width: 100% !important;
+    padding-right: 54px !important;
+}
+
+.pis-swal-password-toggle {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: grid;
+    place-items: center;
+    width: 38px;
+    height: 38px;
+    padding: 0;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: #175b37;
+    cursor: pointer;
+}
+
+.pis-swal-password-toggle:hover {
+    background: #edf6ef;
+    color: #064a2c;
+}
+
+.pis-swal-password-toggle:focus-visible {
+    outline: 3px solid rgba(8, 126, 75, .28);
+    outline-offset: 1px;
+}
+
+.pis-swal-password-toggle svg {
+    width: 22px;
+    height: 22px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
 .pis-swal-actions {
     gap: 10px !important;
 }
@@ -7824,3 +7872,232 @@ body {
         font-size: 12px
     }
 }
+.auth-forgot-link {
+    display: flex;
+    justify-content: flex-end;
+    margin: 6px 0 2px;
+}
+
+.auth-forgot-link button {
+    border: 0;
+    padding: 4px 0;
+    background: transparent;
+    color: #087e4b;
+    font: 600 12px 'DM Sans';
+    cursor: pointer;
+}
+
+.auth-forgot-link button:disabled {
+    opacity: .6;
+    cursor: wait;
+}
+
+/* Password visibility controls: compact, aligned, and visually integrated. */
+.auth-input-wrap.password-input-wrap,
+.dialog-password-wrap {
+    position: relative;
+}
+
+.auth-input-wrap.password-input-wrap {
+    padding-right: 7px;
+    gap: 9px;
+}
+
+.auth-input-wrap.password-input-wrap input {
+    min-width: 0;
+    padding-right: 2px;
+}
+
+.password-toggle {
+    width: 34px;
+    height: 34px;
+    flex: 0 0 34px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: #6b8173 !important;
+    transition: color .16s ease, background-color .16s ease, transform .16s ease;
+}
+
+.password-toggle:hover {
+    border-color: transparent;
+    background: #eaf3ec;
+    color: #087e4b !important;
+}
+
+.password-toggle:active {
+    transform: scale(.96);
+}
+
+.password-toggle:focus-visible {
+    outline: 2px solid #168653;
+    outline-offset: 1px;
+}
+
+.password-eye-icon {
+    width: 20px;
+    height: 20px;
+    stroke-width: 1.8;
+}
+
+.dialog-password-wrap > .dialog-input {
+    padding-right: 52px !important;
+}
+
+.dialog-password-wrap > .password-toggle {
+    right: 7px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 34px;
+    height: 34px;
+    background: transparent;
+    color: #6b8173 !important;
+}
+
+.dialog-password-wrap > .password-toggle:hover {
+    background: #eaf3ec;
+    color: #087e4b !important;
+}
+
+.dialog-password-wrap > .password-toggle:active {
+    transform: translateY(-50%) scale(.96);
+}
+
+.pis-swal-password-wrap .pis-swal-password-input {
+    padding-right: 50px !important;
+}
+
+.pis-swal-password-toggle {
+    right: 7px;
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    color: #6b8173;
+    transition: color .16s ease, background-color .16s ease, transform .16s ease;
+}
+
+.pis-swal-password-toggle svg {
+    width: 20px;
+    height: 20px;
+    stroke-width: 1.8;
+}
+
+.pis-swal-password-toggle:hover {
+    background: #eaf3ec;
+    color: #087e4b;
+}
+
+.pis-swal-password-toggle:active {
+    transform: translateY(-50%) scale(.96);
+}
+
+/* Password reset: one modal with live confirmation matching */
+.pis-reset-password-help {
+    margin: 0 0 18px;
+    color: #5d6b63;
+    font-size: 13px;
+    line-height: 1.55;
+    text-align: left;
+}
+.pis-reset-password-label {
+    display: block;
+    margin: 14px 0 7px;
+    color: #24382c;
+    font-size: 13px;
+    font-weight: 600;
+    text-align: left;
+}
+.pis-swal-popup #pis-reset-password,
+.pis-swal-popup #pis-reset-password-confirm {
+    box-sizing: border-box;
+    width: 100%;
+    margin: 0;
+}
+.pis-reset-password-match {
+    min-height: 20px;
+    margin: 12px 0 0;
+    color: #66736b;
+    font-size: 13px;
+    text-align: left;
+}
+.pis-reset-password-match.is-match { color: #087e4b; font-weight: 600; }
+.pis-reset-password-match.is-mismatch { color: #b42318; font-weight: 600; }
+.pis-swal-confirm:disabled,
+.pis-swal-confirm.swal2-button:disabled {
+    cursor: not-allowed !important;
+    opacity: .48 !important;
+}
+
+/* Dedicated password reset page */
+.auth-reset-page { width: 100%; animation: auth-reset-enter .22s ease-out; }
+.auth-reset-page .auth-heading h2 { margin: 10px 0 8px; color: #142b3b; font-size: clamp(1.55rem, 3vw, 2rem); font-weight: 750; letter-spacing: -.035em; }
+.auth-reset-page .auth-heading p { margin: 0 0 22px; color: #667783; line-height: 1.55; }
+.auth-reset-page .auth-form { margin-top: 22px; }
+.auth-reset-page .password-input-wrap { position: relative; }
+.auth-reset-page .password-input-wrap > input { min-width: 0; padding-right: 52px; }
+.auth-reset-page .password-input-wrap > .password-toggle { position: absolute; right: 7px; top: 50%; transform: translateY(-50%); width: 38px; height: 38px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 10px; background: transparent; color: #738391; cursor: pointer; transition: color .16s ease, background .16s ease; }
+.auth-reset-page .password-input-wrap > .password-toggle:hover { color: #176b59; background: #edf7f3; }
+.auth-reset-page .password-input-wrap > .password-toggle:focus-visible { outline: 2px solid #27836e; outline-offset: 2px; }
+.auth-reset-page .reset-match-status { margin: -8px 0 0; font-size: .86rem; font-weight: 600; }
+.auth-reset-page .reset-match-status.is-match { color: #087e4b; }
+.auth-reset-page .reset-match-status.is-mismatch { color: #b42318; }
+.auth-reset-page .auth-switch { margin-top: 20px; }
+@keyframes auth-reset-enter { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) { .auth-reset-page { animation: none; } }
+
+/* Password reset visibility controls: explicit SVG sizing avoids icon-font rendering issues. */
+.auth-reset-page .auth-input-wrap.password-input-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+    padding-right: 8px;
+    overflow: visible;
+}
+.auth-reset-page .password-input-wrap > input {
+    flex: 1 1 auto;
+    width: 0;
+    min-width: 0;
+    padding-right: 48px !important;
+}
+.auth-reset-page .password-input-wrap > .password-toggle {
+    position: absolute;
+    z-index: 2;
+    right: 7px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 38px;
+    height: 38px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid transparent;
+    border-radius: 9px;
+    background: transparent;
+    color: #526b5e !important;
+    cursor: pointer;
+    line-height: 1;
+}
+.auth-reset-page .password-toggle .reset-eye-svg {
+    display: block;
+    width: 21px;
+    height: 21px;
+    flex: 0 0 21px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    opacity: 1;
+}
+.auth-reset-page .password-toggle:hover {
+    color: #075f3c !important;
+    background: #e7f3eb;
+    border-color: #c6e2d0;
+}
+.auth-reset-page .password-toggle:focus-visible {
+    outline: 2px solid #168653;
+    outline-offset: 1px;
+    box-shadow: 0 0 0 3px #16865322;
+}
+.auth-reset-page .password-toggle:active { transform: translateY(-50%) scale(.96); }
