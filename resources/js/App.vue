@@ -4554,7 +4554,6 @@ async function signOut() {
     ></Teleport>
   </div>
 </template>
-
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;1,9..144,500&family=Manrope:wght@400;500;600;700;800&display=swap');
 
@@ -5267,8 +5266,15 @@ input::placeholder, textarea::placeholder { color: #a3b1aa; font-weight: 400; }
 /* =====================================================================
    SweetAlert2 (custom classes passed from the script)
    ===================================================================== */
-.swal2-container { font-family: var(--font-body); }
-.swal2-container.swal2-backdrop-show, .swal2-container.swal2-noanimation { background: rgb(6 31 26 / 60%) !important; backdrop-filter: blur(5px); }
+.swal2-container { z-index: 20000 !important; font-family: var(--font-body); }
+/* Dim and blur the page only behind real dialogs, never behind toasts */
+body:not(.swal2-toast-shown) .swal2-container.swal2-backdrop-show { background: rgb(6 31 26 / 60%) !important; backdrop-filter: blur(5px); }
+/* Toasts live in a small corner container: keep it fully transparent and unblurred */
+body.swal2-toast-shown .swal2-container,
+.swal2-container.swal2-top-end,
+.swal2-container.swal2-top-start,
+.swal2-container.swal2-bottom-end,
+.swal2-container.swal2-bottom-start { background: transparent !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; box-shadow: none !important; }
 .pis-swal-popup { width: min(460px, 92vw) !important; padding: 30px 28px 26px !important; border-radius: 28px !important; background: #fff; box-shadow: var(--shadow-lg) !important; }
 .pis-swal-title { padding: 6px 0 0 !important; color: var(--pine-900) !important; font-family: var(--font-display) !important; font-size: 26px !important; font-weight: 500 !important; letter-spacing: -0.02em; line-height: 1.2 !important; }
 .pis-swal-copy { margin: 10px 0 0 !important; color: var(--ink-soft) !important; font-size: 14px !important; line-height: 1.7 !important; }
