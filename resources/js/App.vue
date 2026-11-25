@@ -1646,8 +1646,8 @@ async function signOut() {
     <div class="auth-frame">
       <aside class="auth-story">
         <div class="auth-story-brand">
-          <img :src="logoAsset" alt="University College Hospital, Ibadan" />
-          <div><b>University College Hospital</b><small>IBADAN</small></div>
+          <img style="width: 100px; height: auto;" :src="logoAsset" alt="University College Hospital, Ibadan" />
+          <div><h2>University College Hospital</h2><h4>IBADAN</h4></div>
         </div>
         <div class="story-orbit orbit-one"></div>
         <div class="story-orbit orbit-two"></div>
